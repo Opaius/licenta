@@ -19,7 +19,22 @@ import type { GenericId as Id } from "convex/values";
  * const myFunctionReference = api.myModule.myFunction;
  * ```
  */
-export declare const api: {};
+export declare const api: {
+  user: {
+    getSessionUser: FunctionReference<
+      "query",
+      "public",
+      {},
+      {
+        email: string;
+        id: Id<"user">;
+        image: string | null;
+        name: string;
+      } | null
+    >;
+    isAuth: FunctionReference<"query", "public", {}, boolean>;
+  };
+};
 
 /**
  * A utility for referencing Convex functions in your app's internal API.

@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../functions/_generated/dataModel";
-import { auth } from "../functions/auth";
+import { createAuth } from "../functions/auth";
+
 export type SessionUser = Omit<Doc<"user">, "_creationTime" | "_id"> & {
   id: Id<"user">;
   isAdmin: boolean;
@@ -7,4 +8,4 @@ export type SessionUser = Omit<Doc<"user">, "_creationTime" | "_id"> & {
   impersonatedBy?: string;
   plan?: "premium" | "team";
 };
-export type Auth = typeof auth;
+export type Auth = Awaited<ReturnType<typeof createAuth>>;

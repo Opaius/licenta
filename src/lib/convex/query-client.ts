@@ -17,7 +17,11 @@ export const hydrationConfig: Pick<DefaultOptions, "dehydrate" | "hydrate"> = {
     shouldRedactErrors: () => false,
   },
   hydrate: {
-    deserializeData: SuperJSON.deserialize,
+    deserializeData: (data) => {
+      const deserialized = SuperJSON.deserialize(data);
+      console.log("Deserialized data:", deserialized);
+      return deserialized?.json ?? deserialized;
+    },
   },
 };
 

@@ -2,14 +2,15 @@ import type { Metadata } from "next";
 import { Roboto_Serif, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const rbotoSerif = Roboto_Serif({
-  variable: "--font-serif",
+  variable: "--font-roboto-serif",
   subsets: ["latin"],
 });
 
 const spaceGrotesk = Space_Grotesk({
-  variable: "--font-sans",
+  variable: "--font-space-grotesk",
   subsets: ["latin"],
 });
 
@@ -24,11 +25,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
-        className={`${rbotoSerif.variable} ${spaceGrotesk.variable} antialiased`}
+        className={`${rbotoSerif.variable} ${spaceGrotesk.variable} antialiased bg-background`}
       >
-        <Providers>{children}</Providers>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <Providers>{children}</Providers>
+        </ThemeProvider>
       </body>
     </html>
   );

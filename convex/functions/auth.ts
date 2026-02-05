@@ -16,6 +16,7 @@ import {
 import type { DataModel } from "./_generated/dataModel";
 import schema from "./schema";
 import authConfig from "./auth.config";
+import { query } from "../lib/functions";
 
 type GenericCtx = QueryCtx | MutationCtx | ActionCtx;
 const authFunctions: AuthFunctions = internal.auth;
@@ -49,7 +50,9 @@ export const createAuthOptions = (ctx: GenericCtx) =>
         clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       },
     },
-    // Fallback for CLI schema generation
+    emailAndPassword: {
+      enabled: true,
+    },
     trustedOrigins: [process.env.SITE_URL ?? "http://localhost:3000"],
   }) satisfies BetterAuthOptions;
 

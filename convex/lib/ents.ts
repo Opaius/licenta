@@ -16,6 +16,9 @@ export type EntWriter<TableName extends TableNames> = GenericEntWriter<
   TableName
 >;
 
+export type CtxWithTable<Ctx extends MutationCtx | QueryCtx> = Ctx & {
+  table: ReturnType<typeof entsTableFactory<Ctx, typeof entDefinitions>>;
+};
 export const getCtxWithTable = <Ctx extends MutationCtx | QueryCtx>(
   ctx: Ctx,
 ) => ({
