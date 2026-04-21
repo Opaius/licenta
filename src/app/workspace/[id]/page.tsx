@@ -1,37 +1,62 @@
 "use client";
 
-import { useState } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
+import { Skeleton as BoneSkeleton } from "boneyard-js/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  UsersIcon,
+  MessageSquareIcon,
+  GitBranchIcon,
+  SparklesIcon,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
+import { WorkspaceSidebar, type WorkspaceItem } from "@/components/editor/workspace-sidebar";
 import { PromptEditor } from "@/components/editor/prompt-editor";
 import { VersionHistoryPanel, type Version } from "@/components/editor/version-history-panel";
 import { CommentsPanel, type Comment } from "@/components/editor/comments-panel";
 import { VotingControls } from "@/components/editor/voting-controls";
 import { Toolbar } from "@/components/editor/editor-toolbar";
 import { TestResultsPanel, type TestResult } from "@/components/editor/test-results-panel";
-import { WorkspaceSidebar, type WorkspaceItem } from "@/components/editor/workspace-sidebar";
-import {
-  UsersIcon,
-  MessageSquareIcon,
-  GitBranchIcon,
-  SparklesIcon,
-  ChevronRightIcon,
-  ChevronLeftIcon,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
 
-interface UserPresence {
-  id: string;
-  name: string;
-  avatar?: string;
-  color: string;
-  cursor?: { line: number; column: number };
-}
+// Default prompt for fixture
+const DEFAULT_PROMPT = `You are an expert code reviewer. Your role is to analyze code changes and provide constructive feedback.
 
+## Context
+{{context}}
+
+## Task
+Review the following code changes and provide feedback on:
+- Potential bugs or edge cases
+- Code quality and readability
+- Security concerns
+- Performance implications
+- Test coverage
+
+## Guidelines
+- Be specific and actionable
+- Provide code examples when possible
+- Focus on the most important issues first
+- Be respectful and constructive
+
+## Output Format
+Provide your review in markdown format with clear sections.
+
+## Parameters
+temperature: {{temperature|0.7}}
+top_p: {{top_p|0.9}}
+max_tokens: {{max_tokens|2000}}
+`;
+
+// Fixture data — used only during boneyard capture, never in production
 const DEMO_WORKSPACES: WorkspaceItem[] = [
   {
     id: "demo-workspace",
@@ -147,75 +172,239 @@ const DEMO_TEST_RESULTS: TestResult[] = [
   },
 ];
 
-const DEMO_PRESENCE: UserPresence[] = [
-  { id: "u1", name: "Alice", color: "#3b82f6", cursor: { line: 12, column: 5 } },
-  { id: "u2", name: "Bob", color: "#22c55e", cursor: { line: 8, column: 20 } },
+// Fixture component for boneyard capture (shows static layout)
+function WorkspaceFixture() {
+  return (
+    <>
+      {/* Editor area */}
+      <div className="flex-1 relative">
+        <div className="h-full w-full bg-muted flex items-center justify-center">
+          <span className="text-muted-foreground">Prompt Editor (Demo)</span>
+        </div>
+      </div>
+
+      {/* Test results */}
+      <TestResultsPanel results={DEMO_TEST_RESULTS} onRunTest={() => {}} isRunning={false} />
+
+      {/* Footer */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-t text-xs text-muted-foreground bg-muted/30">
+        <div className="flex items-center gap-3">
+          <span>Ln 1, Col 1</span>
+          <span>Prompt Template</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <span className="text-xs">2 online</span>
+          </div>
+          <Separator orientation="vertical" className="h-4" />
+          <div className="flex items-center gap-1">
+            <UsersIcon className="size-3" />
+            <span>2 online</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Right panel */}
+      <div className="h-full border-l flex flex-col">
+        <Tabs value="versions" onValueChange={() => {}}>
+          <TabsList className="w-full rounded-none border-b">
+            <TabsTrigger value="versions" className="flex-1 gap-1">
+              <GitBranchIcon className="size-3" />
+              Versions
+            </TabsTrigger>
+            <TabsTrigger value="comments" className="flex-1 gap-1">
+              <MessageSquareIcon className="size-3" />
+              Comments
+            </TabsTrigger>
+            <TabsTrigger value="voting" className="flex-1 gap-1">
+              <SparklesIcon className="size-3" />
+              Vote
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="versions" className="flex-1 m-0 p-0">
+            <VersionHistoryPanel
+              versions={DEMO_VERSIONS}
+              currentVersionId="v3"
+              onRestore={() => {}}
+            />
+          </TabsContent>
+
+          <TabsContent value="comments" className="flex-1 m-0 p-0">
+            <CommentsPanel
+              comments={DEMO_COMMENTS}
+              onAddComment={() => {}}
+              onResolve={() => {}}
+              onReply={() => {}}
+            />
+          </TabsContent>
+
+          <TabsContent value="voting" className="flex-1 m-0 p-0">
+            <VotingControls
+              upvotes={24}
+              downvotes={3}
+              userVote="up"
+              onUpvote={() => {}}
+              onDownvote={() => {}}
+            />
+          </TabsContent>
+        </Tabs>
+      </div>
+    </>
+  );
+}
+
+// Test configs
+const TEST_CONFIGS = [
+  { provider: "openai" as const, model: "gpt-4" },
+  { provider: "anthropic" as const, model: "claude-3-opus" },
 ];
 
-const DEFAULT_PROMPT = `You are an expert code reviewer. Your role is to analyze code changes and provide constructive feedback.
+export default function WorkspacePage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const workspaceId = params.id;
 
-## Context
-{{context}}
+  // Queries
+  const workspace = useQuery(api.workspaces.getWorkspace, { workspaceId });
+  const allWorkspaces = useQuery(api.workspaces.listWorkspaces, {});
+  const prompts = useQuery(api.prompts.listPrompts, { workspaceId });
 
-## Task
-Review the following code changes and provide feedback on:
-- Potential bugs or edge cases
-- Code quality and readability
-- Security concerns
-- Performance implications
-- Test coverage
+  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
 
-## Guidelines
-- Be specific and actionable
-- Provide code examples when possible
-- Focus on the most important issues first
-- Be respectful and constructive
+  // Select first prompt when loaded
+  useEffect(() => {
+    if (prompts?.length && !selectedPromptId) {
+      setSelectedPromptId(prompts[0]._id);
+    }
+  }, [prompts, selectedPromptId]);
 
-## Output Format
-Provide your review in markdown format with clear sections.
+  // Prompt detail and related
+  const promptDetail = useQuery(
+    api.prompts.getPrompt,
+    { promptId: selectedPromptId! },
+    { enabled: !!selectedPromptId }
+  );
+  const versions = useQuery(
+    api.prompts.getPromptVersions,
+    { promptId: selectedPromptId! },
+    { enabled: !!selectedPromptId }
+  );
+  const comments = useQuery(
+    api.comments.getComments,
+    { promptId: selectedPromptId! },
+    { enabled: !!selectedPromptId }
+  );
+  const votes = useQuery(
+    api.voting.getVotes,
+    { promptId: selectedPromptId! },
+    { enabled: !!selectedPromptId }
+  );
+  const userVoteData = useQuery(
+    api.voting.getUserVote,
+    { promptId: selectedPromptId! },
+    { enabled: !!selectedPromptId }
+  );
+  const testRuns = useQuery(
+    api.testRuns.listTestRuns,
+    { promptId: selectedPromptId! },
+    { enabled: !!selectedPromptId }
+  );
 
-## Parameters
-temperature: {{temperature|0.7}}
-top_p: {{top_p|0.9}}
-max_tokens: {{max_tokens|2000}}
-`;
+  // Mutations
+  const updatePrompt = useMutation(api.prompts.updatePrompt);
+  const createPrompt = useMutation(api.prompts.createPrompt);
+  const voteMutation = useMutation(api.voting.votePrompt);
+  const addCommentMutation = useMutation(api.comments.addComment);
+  const resolveCommentMutation = useMutation(api.comments.resolveComment);
+  const replyCommentMutation = useMutation(api.comments.replyComment);
+  const restoreVersionMutation = useMutation(api.prompts.restoreVersion);
+  const runTestMutation = useMutation(api.testRuns.runTest);
 
-export default function WorkspacePage() {
-  const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
-  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
+  // Local UI state
+  const [content, setContent] = useState("");
   const [saved, setSaved] = useState(true);
   const [testing, setTesting] = useState(false);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
-  const [activeTab, setActiveTab] = useState("versions");
+  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
-  const [upvotes, setUpvotes] = useState(24);
-  const [downvotes, setDownvotes] = useState(3);
+  const [activeTab, setActiveTab] = useState("versions");
+  const [upvotes, setUpvotes] = useState(0);
+  const [downvotes, setDownvotes] = useState(0);
   const [userVote, setUserVote] = useState<"up" | "down" | null>(null);
-  const [branchName] = useState("main");
 
-  const handleSave = () => {
+  // Sync prompt content when selection changes
+  useEffect(() => {
+    if (promptDetail) {
+      setContent(promptDetail.content);
+      setSaved(true);
+    }
+  }, [promptDetail]);
+
+  // Update vote counts
+  useEffect(() => {
+    if (votes) {
+      const up = votes.filter((v) => v.value === 1).length;
+      const down = votes.filter((v) => v.value === -1).length;
+      setUpvotes(up);
+      setDownvotes(down);
+    }
+  }, [votes]);
+
+  // Update current user vote
+  useEffect(() => {
+    if (userVoteData) {
+      setUserVote(userVoteData.value === 1 ? "up" : "down");
+    } else {
+      setUserVote(null);
+    }
+  }, [userVoteData]);
+
+  // Update test results from latest run
+  useEffect(() => {
+    if (testRuns?.length) {
+      const latestRun = testRuns[0];
+      const mapped: TestResult[] = latestRun.results.map((r, idx) => ({
+        id: `${latestRun._id}-${idx}`,
+        name: `${r.provider}/${r.model}`,
+        status: r.error ? "failed" : "passed",
+        duration: r.latency,
+        error: r.error,
+        output: r.response,
+      }));
+      setTestResults(mapped);
+    }
+  }, [testRuns]);
+
+  // Handlers
+  const handleSave = async () => {
+    if (!selectedPromptId) return;
+    await updatePrompt({ promptId: selectedPromptId, content });
     setSaved(true);
   };
 
-  const handleBranch = () => {
-    console.log("Create branch");
-  };
+  const handleBranch = () => console.log("Create branch");
 
-  const handleTest = () => {
+  const handleTest = async () => {
+    if (!selectedPromptId) return;
     setTesting(true);
-    setTestResults((prev) =>
-      prev.map((r) =>
-        r.status === "pending" ? { ...r, status: "running" as const } : r
-      )
-    );
-    setTimeout(() => {
-      setTestResults(DEMO_TEST_RESULTS);
+    try {
+      await runTestMutation({
+        promptId: selectedPromptId,
+        configs: TEST_CONFIGS,
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
       setTesting(false);
-    }, 1000);
+    }
   };
 
   const handleExport = () => {
-    const blob = new Blob([prompt], { type: "text/plain" });
+    if (!content) return;
+    const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -224,195 +413,254 @@ export default function WorkspacePage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleShare = () => {
-    console.log("Share");
-  };
+  const handleShare = () => console.log("Share");
 
   const handleUpvote = () => {
-    if (userVote === "up") {
-      setUpvotes((v) => v - 1);
-      setUserVote(null);
-    } else if (userVote === "down") {
-      setDownvotes((v) => v - 1);
-      setUpvotes((v) => v + 1);
-      setUserVote("up");
-    } else {
-      setUpvotes((v) => v + 1);
-      setUserVote("up");
-    }
+    if (!selectedPromptId) return;
+    const newValue = userVote === "up" ? null : 1;
+    voteMutation({ promptId: selectedPromptId, value: newValue as 1 | -1 | null });
   };
 
   const handleDownvote = () => {
-    if (userVote === "down") {
-      setDownvotes((v) => v - 1);
-      setUserVote(null);
-    } else if (userVote === "up") {
-      setUpvotes((v) => v - 1);
-      setDownvotes((v) => v + 1);
-      setUserVote("down");
-    } else {
-      setDownvotes((v) => v + 1);
-      setUserVote("down");
-    }
+    if (!selectedPromptId) return;
+    const newValue = userVote === "down" ? null : -1;
+    voteMutation({ promptId: selectedPromptId, value: newValue as 1 | -1 | null });
   };
 
-  const handleAddComment = (content: string) => {
-    console.log("Add comment:", content);
+  const handleAddComment = (contentStr: string, line?: number) => {
+    if (!selectedPromptId) return;
+    addCommentMutation({
+      promptId: selectedPromptId,
+      content: contentStr,
+      selectionStart: line,
+      selectionEnd: line,
+    });
   };
 
   const handleResolveComment = (commentId: string) => {
-    console.log("Resolve comment:", commentId);
+    resolveCommentMutation({ commentId });
   };
 
-  const handleReplyComment = (commentId: string, content: string) => {
-    console.log("Reply to comment:", commentId, content);
+  const handleReplyComment = (commentId: string, contentStr: string) => {
+    replyCommentMutation({ parentId: commentId, content: contentStr });
   };
 
   const handleRestoreVersion = (versionId: string) => {
-    console.log("Restore version:", versionId);
+    if (!selectedPromptId) return;
+    restoreVersionMutation({ promptId: selectedPromptId, versionId });
   };
+
+  const handleCreatePrompt = async (wsId: string) => {
+    const result = await createPrompt({
+      workspaceId: wsId,
+      title: "New Prompt",
+      content: "",
+    });
+    if (result?.promptId) {
+      setSelectedPromptId(result.promptId);
+    }
+  };
+
+  // Build sidebar workspaces array
+  const sidebarWorkspaces: WorkspaceItem[] = (allWorkspaces ?? []).map((ws) => ({
+    id: ws._id,
+    name: ws.name,
+    prompts:
+      ws._id === workspaceId
+        ? (prompts ?? []).map((p) => ({
+            id: p._id,
+            name: p.title,
+            updatedAt: new Date(p.createdAt),
+          }))
+        : [],
+  }));
+
+  // Main content loading flag
+  const isMainLoading = selectedPromptId && !promptDetail;
+
+  // Simple fallback for skeleton before bones generated
+  const SidebarFallback = () => (
+    <div className="p-2 space-y-2">
+      <div className="h-8 w-3/4 bg-muted rounded animate-pulse" />
+      <div className="h-8 w-1/2 bg-muted rounded animate-pulse" />
+      <div className="h-8 w-2/3 bg-muted rounded animate-pulse" />
+    </div>
+  );
+
+  const MainFallback = () => (
+    <div className="flex items-center justify-center h-full">
+      <span className="text-muted-foreground">Loading…</span>
+    </div>
+  );
 
   return (
     <div className="flex h-screen w-full bg-background">
-        <div className="w-64 flex-shrink-0 border-r">
+      {/* Sidebar */}
+      <div className="w-64 flex-shrink-0 border-r">
+        <BoneSkeleton
+          name="sidebar"
+          loading={allWorkspaces === undefined}
+          fixture={<WorkspaceSidebar workspaces={DEMO_WORKSPACES} activeWorkspaceId="demo-workspace" activePromptId="prompt-1" onSelectPrompt={() => {}} onCreatePrompt={() => {}} />}
+          fallback={<SidebarFallback />}
+        >
           <WorkspaceSidebar
-            workspaces={DEMO_WORKSPACES}
-            activeWorkspaceId="demo-workspace"
-            activePromptId="prompt-1"
-            onSelectPrompt={(wsId, promptId) =>
-              console.log("Select:", wsId, promptId)
-            }
+            workspaces={sidebarWorkspaces}
+            activeWorkspaceId={workspaceId}
+            activePromptId={selectedPromptId ?? undefined}
+            onSelectPrompt={(_, promptId) => setSelectedPromptId(promptId)}
+            onCreatePrompt={handleCreatePrompt}
           />
-        </div>
+        </BoneSkeleton>
+      </div>
 
-        <div className="flex-1 flex flex-col min-w-0">
-          <Toolbar
-            onSave={handleSave}
-            onBranch={handleBranch}
-            onTest={handleTest}
-            onExport={handleExport}
-            onShare={handleShare}
-            saved={saved}
-            testing={testing}
-            branchName={branchName}
-          />
+      {/* Main area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <Toolbar
+          onSave={handleSave}
+          onBranch={handleBranch}
+          onTest={handleTest}
+          onExport={handleExport}
+          onShare={handleShare}
+          saved={saved}
+          testing={testing}
+          branchName={"main"}
+        />
 
-          <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 overflow-hidden">
-            <ResizablePanel defaultSize={80} minSize={50}>
-              <div className="flex flex-col h-full min-w-0">
-                <div className="flex-1 relative">
-                  <PromptEditor
-                    value={prompt}
-                    onChange={(v) => {
-                      setPrompt(v);
-                      setSaved(false);
-                    }}
-                    onCursorChange={(line, column) =>
-                      setCursorPosition({ line, column })
-                    }
+        <BoneSkeleton
+          name="main-content"
+          loading={isMainLoading}
+          fixture={<WorkspaceFixture />}
+          fallback={<MainFallback />}
+        >
+          {selectedPromptId && promptDetail ? (
+            <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 overflow-hidden">
+              {/* Editor + Test Results */}
+              <ResizablePanel defaultSize={80} minSize={50}>
+                <div className="flex flex-col h-full min-w-0">
+                  <div className="flex-1 relative">
+                    <PromptEditor
+                      value={content}
+                      onChange={(v) => {
+                        setContent(v);
+                        setSaved(false);
+                      }}
+                      onCursorChange={(line, column) =>
+                        setCursorPosition({ line, column })
+                      }
+                    />
+                  </div>
+
+                  <TestResultsPanel
+                    results={testResults}
+                    onRunTest={handleTest}
+                    isRunning={testing}
                   />
-                </div>
-
-                <TestResultsPanel
-                  results={testResults.length > 0 ? testResults : DEMO_TEST_RESULTS}
-                  onRunTest={handleTest}
-                  isRunning={testing}
-                />
-                <div className="flex items-center justify-between px-3 py-1.5 border-t text-xs text-muted-foreground bg-muted/30">
-                  <div className="flex items-center gap-3">
-                    <span>Ln {cursorPosition.line}, Col {cursorPosition.column}</span>
-                    <span>Prompt Template</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      {DEMO_PRESENCE.map((user) => (
-                        <div
-                          key={user.id}
-                          className="relative"
-                          style={{ zIndex: DEMO_PRESENCE.indexOf(user) }}
-                        >
-                          <Avatar
-                            className="size-6 border-2"
-                            style={{ borderColor: user.color }}
-                          >
-                            <AvatarImage src={user.avatar} />
-                            <AvatarFallback className="text-[10px]">
-                              {user.name.charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                      ))}
+                  <div className="flex items-center justify-between px-3 py-1.5 border-t text-xs text-muted-foreground bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <span>Ln {cursorPosition.line}, Col {cursorPosition.column}</span>
+                      <span>Prompt Template</span>
                     </div>
-                    <Separator orientation="vertical" className="h-4" />
-                    <div className="flex items-center gap-1">
-                      <UsersIcon className="size-3" />
-                      <span>{DEMO_PRESENCE.length} online</span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs">1 online</span>
+                      </div>
+                      <Separator orientation="vertical" className="h-4" />
+                      <div className="flex items-center gap-1">
+                        <UsersIcon className="size-3" />
+                        <span>1 online</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </ResizablePanel>
+              </ResizablePanel>
 
-            <ResizableHandle
-              withHandle
-              className="hover:bg-primary/20 transition-colors cursor-pointer"
-              onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-            />
+              <ResizableHandle
+                withHandle
+                className="hover:bg-primary/20 transition-colors cursor-pointer"
+                onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+              />
 
-            <ResizablePanel
-              minSize={20}
-              maxSize={50}
-              defaultSize={rightPanelCollapsed ? 0 : 20}
-              style={{ display: rightPanelCollapsed ? "none" : "flex" }}
-            >
-              <div className="h-full border-l flex flex-col">
-                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)}>
-                  <TabsList className="w-full rounded-none border-b">
-                    <TabsTrigger value="versions" className="flex-1 gap-1">
-                      <GitBranchIcon className="size-3" />
-                      Versions
-                    </TabsTrigger>
-                    <TabsTrigger value="comments" className="flex-1 gap-1">
-                      <MessageSquareIcon className="size-3" />
-                      Comments
-                    </TabsTrigger>
-                    <TabsTrigger value="voting" className="flex-1 gap-1">
-                      <SparklesIcon className="size-3" />
-                      Vote
-                    </TabsTrigger>
-                  </TabsList>
+              {/* Right panel: Versions / Comments / Voting */}
+              <ResizablePanel
+                minSize={20}
+                maxSize={50}
+                defaultSize={rightPanelCollapsed ? 0 : 20}
+                style={{ display: rightPanelCollapsed ? "none" : "flex" }}
+              >
+                <div className="h-full border-l flex flex-col">
+                  <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)}>
+                    <TabsList className="w-full rounded-none border-b">
+                      <TabsTrigger value="versions" className="flex-1 gap-1">
+                        <GitBranchIcon className="size-3" />
+                        Versions
+                      </TabsTrigger>
+                      <TabsTrigger value="comments" className="flex-1 gap-1">
+                        <MessageSquareIcon className="size-3" />
+                        Comments
+                      </TabsTrigger>
+                      <TabsTrigger value="voting" className="flex-1 gap-1">
+                        <SparklesIcon className="size-3" />
+                        Vote
+                      </TabsTrigger>
+                    </TabsList>
 
-                  <TabsContent value="versions" className="flex-1 m-0 p-0">
-                    <VersionHistoryPanel
-                      versions={DEMO_VERSIONS}
-                      currentVersionId="v3"
-                      onRestore={handleRestoreVersion}
-                    />
-                  </TabsContent>
+                    <TabsContent value="versions" className="flex-1 m-0 p-0">
+                      <VersionHistoryPanel
+                        versions={(versions ?? []).map((v) => ({
+                          id: v._id,
+                          timestamp: new Date(v.createdAt),
+                          author: { name: v.authorId },
+                          message: `Version ${v.version}`,
+                          changes: 0,
+                        }))}
+                        currentVersionId={promptDetail?.currentVersion?.toString()}
+                        onRestore={handleRestoreVersion}
+                      />
+                    </TabsContent>
 
-                  <TabsContent value="comments" className="flex-1 m-0 p-0">
-                    <CommentsPanel
-                      comments={DEMO_COMMENTS}
-                      onAddComment={handleAddComment}
-                      onResolve={handleResolveComment}
-                      onReply={handleReplyComment}
-                    />
-                  </TabsContent>
+                    <TabsContent value="comments" className="flex-1 m-0 p-0">
+                      <CommentsPanel
+                        comments={(comments ?? []).map((c) => ({
+                          id: c._id,
+                          author: { name: c.authorId },
+                          content: c.content,
+                          timestamp: new Date(c.createdAt),
+                          line: c.selectionStart,
+                          resolved: c.resolved,
+                        }))}
+                        onAddComment={handleAddComment}
+                        onResolve={handleResolveComment}
+                        onReply={handleReplyComment}
+                      />
+                    </TabsContent>
 
-                  <TabsContent value="voting" className="flex-1 m-0 p-0">
-                    <VotingControls
-                      upvotes={upvotes}
-                      downvotes={downvotes}
-                      userVote={userVote}
-                      onUpvote={handleUpvote}
-                      onDownvote={handleDownvote}
-                    />
-                  </TabsContent>
-                </Tabs>
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </div>
+                    <TabsContent value="voting" className="flex-1 m-0 p-0">
+                      <VotingControls
+                        upvotes={upvotes}
+                        downvotes={downvotes}
+                        userVote={userVote}
+                        onUpvote={handleUpvote}
+                        onDownvote={handleDownvote}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4">
+              <p>Select a prompt or create a new one</p>
+              <Button
+                onClick={() => {
+                  if (workspaceId) handleCreatePrompt(workspaceId);
+                }}
+              >
+                Create Prompt
+              </Button>
+            </div>
+          )}
+        </BoneSkeleton>
+      </div>
     </div>
   );
 }

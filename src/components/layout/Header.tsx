@@ -2,7 +2,7 @@
 
 import { Bell, LogOut, Settings, User } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useQuery } from "convex/react";
+import { api } from "@convex/_generated/api";
+
+// Type for Convex auth user (from better-auth)
+interface ConvexAuthUser {
+  userId: string;
+  email: string;
+  name?: string;
+  avatarUrl?: string;
+}
 
 interface HeaderProps {
   user?: {
@@ -21,16 +31,21 @@ interface HeaderProps {
 }
 
 export function Header({ user }: HeaderProps) {
-  const displayUser = user || {
-    name: "Alex Morgan",
-    email: "alex@example.com",
+  const currentUser = useQuery<ConvexAuthUser | null>(api.auth.getCurrentUser);
+  const displayUser = user || currentUser || {
+    name: "User",
+    email: "user@example.com",
   };
 
-  const initials = displayUser.name
+  // Use email as name if name not available
+  const displayName = displayUser.name || (displayUser.email ? displayUser.email.split('@')[0] : "User");
+
+  const initials = displayName
     .split(" ")
     .map((n) => n[0])
     .join("")
-    .toUpperCase();
+    .toUpperCase()
+    .slice(0, 2);
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-background px-6">
@@ -39,34 +54,33 @@ export function Header({ user }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="size-4" />
-          <span className="absolute right-1.5 top-1.5 flex size-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
-            <span className="relative inline-flex size-2 rounded-full bg-destructive" />
-          </span>
-        </Button>
+<Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
+  <Bell className="size-4" aria-hidden="true" />
+  <span className="absolute right-1.5 top-1.5 flex size-2" aria-hidden="true">
+    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
+    <span className="relative inline-flex size-2 rounded-full bg-destructive" />
+  </span>
+</Button>
 
         <DropdownMenu>
-          <DropdownMenuTrigger>
-            <Button variant="ghost" className="relative size-8 rounded-full">
-              <Avatar className="size-8">
-                {displayUser.avatarUrl && (
-                  <img src={displayUser.avatarUrl} alt={displayUser.name} />
-                )}
-                <AvatarFallback>{initials}</AvatarFallback>
-              </Avatar>
-            </Button>
+          <DropdownMenuTrigger className={buttonVariants({className:"relative size-8 rounded-full", variant:"ghost"})}>
+
+<Avatar className="size-8">
+  {displayUser.avatarUrl && (
+    <img src={displayUser.avatarUrl} alt={displayName} />
+  )}
+  <AvatarFallback>{initials}</AvatarFallback>
+</Avatar>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56" align="end">
-            <DropdownMenuLabel className="font-normal">
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">{displayUser.name}</p>
-                <p className="text-xs leading-none text-muted-foreground">
-                  {displayUser.email}
-                </p>
-              </div>
-            </DropdownMenuLabel>
+<DropdownMenuLabel className="font-normal">
+  <div className="flex flex-col space-y-1">
+    <p className="text-sm font-medium leading-none">{displayName}</p>
+    <p className="text-xs leading-none text-muted-foreground">
+      {displayUser.email}
+    </p>
+  </div>
+</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem>
               <User className="mr-2 size-4" />

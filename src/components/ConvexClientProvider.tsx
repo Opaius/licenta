@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { Toaster } from "sonner";
 import { ConvexReactClient } from "convex/react";
 import { authClient } from "@/lib/auth-client";
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
@@ -21,6 +22,7 @@ export function ConvexClientProvider({
       initialToken={initialToken}
     >
       {children}
+      <Toaster position="top-right" richColors />
     </ConvexBetterAuthProvider>
   );
 }

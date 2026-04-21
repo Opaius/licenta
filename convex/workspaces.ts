@@ -8,30 +8,73 @@ export const listWorkspaces = query({
     const user = await authComponent.getAuthUser(ctx);
     if (!user || !user.userId) throw new Error("Not authenticated");
     const userId = user.userId;
-    
+
     const owned = await ctx.db
       .query("workspaces")
       .withIndex("by_owner", (q) => q.eq("ownerId", userId))
       .collect();
-    
+
     const memberships = await ctx.db
       .query("workspaceMembers")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
-    
+
     const memberWorkspaceIds = [...new Set(memberships.map((m) => m.workspaceId))];
     const memberWorkspaces = await Promise.all(
       memberWorkspaceIds.map((id) => ctx.db.get(id))
     ).then((results) => results.filter((w): w is NonNullable<typeof w> => w !== null));
-    
+
+    const allWorkspaceIds = [
+      ...owned.map((w) => w._id),
+      ...memberWorkspaces.map((w) => w._id),
+    ];
+
+    // Fetch counts for all workspaces in bulk
+    const [memberCounts, promptCounts] = await Promise.all([
+      // Count members per workspace
+      ctx.db
+        .query("workspaceMembers")
+        .withIndex("by_workspace", (q) => q.in("workspaceId", allWorkspaceIds))
+        .collect()
+        .then((members) => {
+          const counts = new Map<string, number>();
+          for (const m of members) {
+            counts.set(m.workspaceId.toString(), (counts.get(m.workspaceId.toString()) || 0) + 1);
+          }
+          return counts;
+        }),
+      // Count prompts per workspace
+      ctx.db
+        .query("prompts")
+        .withIndex("by_workspace", (q) => q.in("workspaceId", allWorkspaceIds))
+        .collect()
+        .then((prompts) => {
+          const counts = new Map<string, number>();
+          for (const p of prompts) {
+            counts.set(p.workspaceId.toString(), (counts.get(p.workspaceId.toString()) || 0) + 1);
+          }
+          return counts;
+        }),
+    ]);
+
     const allWorkspaces = [
-      ...owned.map((w) => ({ ...w, role: "owner" as const })),
+      ...owned.map((w) => ({
+        ...w,
+        role: "owner" as const,
+        memberCount: memberCounts.get(w._id.toString()) || 0,
+        promptsCount: promptCounts.get(w._id.toString()) || 0,
+      })),
       ...memberWorkspaces.map((w) => {
         const membership = memberships.find((m) => m.workspaceId === w._id);
-        return { ...w, role: membership?.role ?? "viewer" };
+        return {
+          ...w,
+          role: membership?.role ?? "viewer",
+          memberCount: memberCounts.get(w._id.toString()) || 0,
+          promptsCount: promptCounts.get(w._id.toString()) || 0,
+        };
       }),
     ];
-    
+
     return allWorkspaces.sort((a, b) => b.createdAt - a.createdAt);
   },
 });

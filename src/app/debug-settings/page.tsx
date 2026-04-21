@@ -1,7 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { GlobeIcon, LockIcon } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { authClient } from "@/lib/auth-client"
+import { GlobeIcon, LockIcon, Loader2 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,6 +12,21 @@ import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 
 export default function DebugSettingsPage() {
+  const router = useRouter();
+  const { data: session, isLoading } = authClient.useSession();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    router.push("/auth");
+    return null;
+  }
   const [name, setName] = useState("My Workspace")
   const [isPublic, setIsPublic] = useState(false)
 

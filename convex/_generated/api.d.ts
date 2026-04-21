@@ -11,6 +11,7 @@
 import type * as apiKeys from "../apiKeys.js";
 import type * as auth from "../auth.js";
 import type * as comments from "../comments.js";
+import type * as http from "../http.js";
 import type * as notifications from "../notifications.js";
 import type * as prompts from "../prompts.js";
 import type * as testRuns from "../testRuns.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   apiKeys: typeof apiKeys;
   auth: typeof auth;
   comments: typeof comments;
+  http: typeof http;
   notifications: typeof notifications;
   prompts: typeof prompts;
   testRuns: typeof testRuns;

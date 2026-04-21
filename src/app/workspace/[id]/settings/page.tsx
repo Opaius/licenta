@@ -1,11 +1,12 @@
-import { Suspense } from "react"
+"use client";
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { WorkspaceSettings } from "@/components/settings/workspace-settings"
-import { MembersSettings } from "@/components/settings/members-settings"
-import { InviteSettings } from "@/components/settings/invite-settings"
-import { ApiKeysSettings } from "@/components/settings/api-keys-settings"
-import { TestRunSettings } from "@/components/settings/test-run-settings"
+import { Suspense } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { WorkspaceSettings } from "@/components/settings/workspace-settings";
+import { MembersSettings } from "@/components/settings/members-settings";
+import { InviteSettings } from "@/components/settings/invite-settings";
+import { ApiKeysSettings } from "@/components/settings/api-keys-settings";
+import { TestRunSettings } from "@/components/settings/test-run-settings";
 
 export default function WorkspaceSettingsPage({
   params,

@@ -3,58 +3,73 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useForm } from "@felte/react";
+import { validator } from "@felte/validator-zod";
+import { z } from "zod";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Field, FieldLabel, FieldContent, FieldError } from "@/components/ui/field";
 import { authClient } from "@/lib/auth-client";
+
+function toFieldErrors(errors?: string | string[]): Array<{ message?: string }> {
+  if (!errors) return [];
+  if (typeof errors === "string") return [{ message: errors }];
+  return errors.map((message) => ({ message }));
+}
+
+const loginSchema = z.object({
+  email: z.email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+const signupSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.email("Invalid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
 
 export default function AuthPage() {
   const router = useRouter();
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [signupEmail, setSignupEmail] = useState("");
-  const [signupPassword, setSignupPassword] = useState("");
-  const [signupName, setSignupName] = useState("");
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      await authClient.signIn.email({
-        email: loginEmail,
-        password: loginPassword,
+  const { form: loginForm, errors: loginErrors, isValid: loginIsValid, isSubmitting: loginSubmitting } = useForm({
+    validate: validator({ schema: loginSchema }),
+    onSubmit: async (values) => {
+      setError("");
+      const { error } = await authClient.signIn.email({
+        email: values.email,
+        password: values.password,
       });
-      router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Login failed");
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (error) {
+        // Better-auth error has message and optionally statusCode
+        setError(error.message || "Invalid credentials");
+      } else {
+        router.push("/dashboard");
+      }
+    },
+  });
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      await authClient.signUp.email({
-        email: signupEmail,
-        password: signupPassword,
-        name: signupName,
+  const { form: signupForm, errors: signupErrors, isValid: signupIsValid, isSubmitting: signupSubmitting } = useForm({
+    validate: validator({ schema: signupSchema }),
+    onSubmit: async (values) => {
+      setError("");
+      const { error } = await authClient.signUp.email({
+        email: values.email,
+        password: values.password,
+        name: values.name,
       });
-      router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Signup failed");
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (error) {
+        setError(error.message || "Signup failed");
+      } else {
+        router.push("/dashboard");
+      }
+    },
+  });
+
+  const loading = loginSubmitting() || signupSubmitting();
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
@@ -75,76 +90,84 @@ export default function AuthPage() {
             </TabsList>
 
             <TabsContent value="login" className="mt-4">
-              <form onSubmit={handleLogin} className="space-y-4">
+              <form ref={loginForm} method="post" className="space-y-4" noValidate>
                 {error && (
                   <div className="p-3 text-sm bg-destructive/10 border border-destructive/20 rounded-md text-destructive">
                     {error}
                   </div>
                 )}
-                <div className="space-y-2">
-                  <Label htmlFor="login-email">Email</Label>
-                  <Input
-                    id="login-email"
-                    type="email"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="login-password">Password</Label>
-                  <Input
-                    id="login-password"
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    required
-                  />
-                </div>
-                <Button type="submit" disabled={loading} className="w-full">
+                <Field>
+                  <FieldLabel htmlFor="login-email">Email</FieldLabel>
+                  <FieldContent>
+                    <Input
+                      id="login-email"
+                      name="email"
+                      type="email"
+                      placeholder="you@example.com"
+                    />
+                  </FieldContent>
+                  <FieldError errors={toFieldErrors(loginErrors().email)} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="login-password">Password</FieldLabel>
+                  <FieldContent>
+                    <Input
+                      id="login-password"
+                      name="password"
+                      type="password"
+                    />
+                  </FieldContent>
+                  <FieldError errors={toFieldErrors(loginErrors().password)} />
+                </Field>
+                <Button type="submit" disabled={loading || !loginIsValid} className="w-full">
                   {loading ? "Loading..." : "Log in"}
                 </Button>
               </form>
             </TabsContent>
 
             <TabsContent value="signup" className="mt-4">
-              <form onSubmit={handleSignup} className="space-y-4">
+              <form ref={signupForm} method="post" className="space-y-4" noValidate>
                 {error && (
                   <div className="p-3 text-sm bg-destructive/10 border border-destructive/20 rounded-md text-destructive">
                     {error}
                   </div>
                 )}
-                <div className="space-y-2">
-                  <Label htmlFor="signup-name">Name</Label>
-                  <Input
-                    id="signup-name"
-                    type="text"
-                    value={signupName}
-                    onChange={(e) => setSignupName(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">Email</Label>
-                  <Input
-                    id="signup-email"
-                    type="email"
-                    value={signupEmail}
-                    onChange={(e) => setSignupEmail(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">Password</Label>
-                  <Input
-                    id="signup-password"
-                    type="password"
-                    value={signupPassword}
-                    onChange={(e) => setSignupPassword(e.target.value)}
-                    required
-                  />
-                </div>
-                <Button type="submit" disabled={loading} className="w-full">
+                <Field>
+                  <FieldLabel htmlFor="signup-name">Name</FieldLabel>
+                  <FieldContent>
+                    <Input
+                      id="signup-name"
+                      name="name"
+                      type="text"
+                      placeholder="John Doe"
+                    />
+                  </FieldContent>
+                  <FieldError errors={toFieldErrors(signupErrors().name)} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="signup-email">Email</FieldLabel>
+                  <FieldContent>
+                    <Input
+                      id="signup-email"
+                      name="email"
+                      type="email"
+                      placeholder="you@example.com"
+                    />
+                  </FieldContent>
+                  <FieldError errors={toFieldErrors(signupErrors().email)} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="signup-password">Password</FieldLabel>
+                  <FieldContent>
+                    <Input
+                      id="signup-password"
+                      name="password"
+                      type="password"
+                    />
+                  </FieldContent>
+                  <FieldError errors={toFieldErrors(signupErrors().password)} />
+                </Field>
+                <Button type="submit" disabled={loading || !signupIsValid} className="w-full">
                   {loading ? "Loading..." : "Sign up"}
                 </Button>
               </form>

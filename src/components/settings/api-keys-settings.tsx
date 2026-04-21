@@ -6,7 +6,7 @@ import { KeyIcon, PlusIcon, TrashIcon } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -87,11 +87,9 @@ export function ApiKeysSettings({ workspaceId }: ApiKeysSettingsProps) {
       <CardContent className="space-y-4">
         <div className="flex justify-end">
           <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-            <DialogTrigger>
-              <Button>
-                <PlusIcon className="size-4" />
-                Add Key
-              </Button>
+            <DialogTrigger className={buttonVariants()}>
+              <PlusIcon className="size-4" />
+              Add Key
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>

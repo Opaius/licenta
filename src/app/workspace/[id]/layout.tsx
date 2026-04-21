@@ -3,23 +3,23 @@ import { isAuthenticated, preloadAuthQuery } from "@/lib/auth-server";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Dashboard - Stratum Live",
-  description: "Your workspaces and prompts",
+  title: "Workspace - Stratum Live",
 };
 
-export default async function DashboardLayout({
+export default async function WorkspaceLayout({
   children,
+  params,
 }: Readonly<{
   children: React.ReactNode;
+  params: Promise<{ id: string }>;
 }>) {
   const authed = await isAuthenticated();
   
   if (!authed) {
     redirect("/auth");
   }
-  return (
-    <div className="flex h-screen flex-col bg-background">
-      {children}
-    </div>
-  );
+
+  await preloadAuthQuery();
+
+  return <>{children}</>;
 }
