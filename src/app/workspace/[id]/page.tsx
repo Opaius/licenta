@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { WorkspaceSidebar, type WorkspaceItem } from "@/components/editor/workspace-sidebar";
 import { PromptEditor } from "@/components/editor/prompt-editor";

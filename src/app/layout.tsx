@@ -4,6 +4,7 @@ import "./globals.css";
 import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import BoneyardProvider from "@/components/BoneyardProvider";
 import { getToken } from "@/lib/auth-server";
+import { Toaster } from "sonner";
 
 const robotoSerif = Roboto_Serif({
   variable: "--font-heading",
@@ -48,6 +49,7 @@ export default async function RootLayout({
         <ConvexClientProvider initialToken={token}>
           <BoneyardProvider>
             {children}
+            <Toaster position="bottom-right" richColors />
           </BoneyardProvider>
         </ConvexClientProvider>
       </body>
