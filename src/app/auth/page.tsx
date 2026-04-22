@@ -50,12 +50,13 @@ export default function AuthPage() {
   const router = useRouter();
   const [globalError, setGlobalError] = useState("");
   const currentUser = useQuery(api.auth.getCurrentUser);
+  const isAuthenticated = currentUser !== undefined && currentUser !== null;
 
   useEffect(() => {
-    if (currentUser) {
+    if (isAuthenticated) {
       router.push("/dashboard");
     }
-  }, [currentUser, router]);
+  }, [isAuthenticated, router]);
 
   const loginForm = useForm({
     defaultValues: { email: "", password: "" },
