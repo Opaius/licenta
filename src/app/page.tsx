@@ -1,7 +1,14 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { buttonVariants } from "@/components/ui/button";
+import { isAuthenticated } from "@/lib/auth-server";
 
-export default function Home() {
+export default async function Home() {
+  const authed = await isAuthenticated();
+  if (authed) {
+    redirect("/dashboard");
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">

@@ -7,7 +7,6 @@ import {
   GitBranchIcon,
   PlayIcon,
   DownloadIcon,
-  ShareIcon,
   CopyIcon,
   CheckIcon,
 } from "lucide-react";
@@ -22,6 +21,7 @@ interface ToolbarProps {
   saved?: boolean;
   testing?: boolean;
   branchName?: string;
+  canTest?: boolean;
 }
 
 export function Toolbar({
@@ -33,6 +33,7 @@ export function Toolbar({
   saved = false,
   testing = false,
   branchName,
+  canTest = true,
 }: ToolbarProps) {
   const [copied, setCopied] = useState(false);
 
@@ -84,7 +85,8 @@ export function Toolbar({
         variant="default"
         size="sm"
         onClick={onTest}
-        disabled={testing}
+        disabled={testing || !canTest}
+        title={!canTest ? "Select an API key and model to test" : undefined}
       >
         <PlayIcon className="size-4 mr-1" />
         <span className="hidden sm:inline">{testing ? "Testing..." : "Test"}</span>

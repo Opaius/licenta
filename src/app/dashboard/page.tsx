@@ -14,6 +14,15 @@ import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { WorkspaceCard, WorkspaceCardProps } from "@/components/workspace/WorkspaceCard";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface WorkspaceWithRole {
   _id: string;
@@ -76,15 +85,20 @@ function DashboardContent() {
   const createWorkspace = useMutation(api.workspaces.createWorkspace);
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newWorkspaceName, setNewWorkspaceName] = useState("");
 
   const handleCreateWorkspace = async () => {
+    if (!newWorkspaceName.trim()) return;
     setIsCreating(true);
     try {
       await createWorkspace({
-        name: `Workspace ${Date.now()}`,
+        name: newWorkspaceName.trim(),
         isPublic: false,
       });
-      toast.success("Workspace created successfully!");
+      toast.success("Workspace created!");
+      setNewWorkspaceName("");
+      setShowCreateDialog(false);
     } catch (error) {
       console.error("Failed to create workspace:", error);
       const err = error instanceof Error ? error : new Error("Failed to create workspace");
@@ -128,10 +142,43 @@ function DashboardContent() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-              <Button onClick={handleCreateWorkspace} disabled={isCreating}>
-                <Plus className="size-4" data-icon="inline-start" />
-                New Workspace
-              </Button>
+              <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+                <DialogTrigger className="inline-flex">
+                  <Button>
+                    <Plus className="size-4" data-icon="inline-start" />
+                    New Workspace
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Create Workspace</DialogTitle>
+                    <DialogDescription>
+                      Give your workspace a name. You can invite team members after creation.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="py-2">
+                    <Input
+                      placeholder="e.g. Marketing Prompts"
+                      value={newWorkspaceName}
+                      onChange={(e) => setNewWorkspaceName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newWorkspaceName.trim()) {
+                          handleCreateWorkspace();
+                        }
+                      }}
+                      autoFocus
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button variant="ghost" size="sm" onClick={() => setShowCreateDialog(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleCreateWorkspace} disabled={isCreating || !newWorkspaceName.trim()}>
+                      {isCreating ? "Creating..." : "Create"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
 
@@ -144,33 +191,33 @@ function DashboardContent() {
             {workspaces !== undefined && (
               <>
                 {filteredWorkspaces.length === 0 ? (
-<div className="flex flex-1 flex-col items-center justify-center py-20 text-center">
-  <div className="mb-5 flex size-20 items-center justify-center rounded-2xl bg-muted/40">
-    <Search className="size-10 text-muted-foreground/70" />
-  </div>
-  <h2 className="mb-2.5 text-xl font-semibold">No workspaces found</h2>
-  <p className="mb-8 max-w-md text-muted-foreground/80">
-    {searchQuery
-      ? `No workspaces matching "${searchQuery}"`
-      : "Get started by creating your first workspace"}
-  </p>
-  {!searchQuery && (
-    <Button onClick={handleCreateWorkspace} size="lg" disabled={isCreating}>
-      {isCreating ? (
-        <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
-      ) : (
-        <Plus className="size-4" data-icon="inline-start" />
-      )}
-      Create Workspace
-    </Button>
-  )}
-</div>
+                  <div className="flex flex-1 flex-col items-center justify-center py-20 text-center">
+                    <div className="mb-5 flex size-20 items-center justify-center rounded-2xl bg-muted/40">
+                      <Search className="size-10 text-muted-foreground/70" />
+                    </div>
+                    <h2 className="mb-2.5 text-xl font-semibold">No workspaces found</h2>
+                    <p className="mb-8 max-w-md text-muted-foreground/80">
+                      {searchQuery
+                        ? `No workspaces matching "${searchQuery}"`
+                        : "Get started by creating your first workspace"}
+                    </p>
+                    {!searchQuery && (
+                      <Button onClick={() => setShowCreateDialog(true)} size="lg" disabled={isCreating}>
+                        {isCreating ? (
+                          <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
+                        ) : (
+                          <Plus className="size-4" data-icon="inline-start" />
+                        )}
+                        Create Workspace
+                      </Button>
+                    )}
+                  </div>
                 ) : (
-<div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-  {workspaceCards.map((workspace) => (
-    <WorkspaceCard key={workspace.id} {...workspace} />
-  ))}
-</div>
+                  <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {workspaceCards.map((workspace) => (
+                      <WorkspaceCard key={workspace.id} {...workspace} />
+                    ))}
+                  </div>
                 )}
               </>
             )}

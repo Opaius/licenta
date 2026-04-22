@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "@tanstack/react-form";
@@ -18,6 +18,8 @@ import {
   FieldGroup,
 } from "@/components/ui/field";
 import { authClient } from "@/lib/auth-client";
+import { useQuery } from "convex/react";
+import { api } from "@convex/_generated/api";
 
 const loginSchema = z.object({
   email: z.email("Invalid email address"),
@@ -47,6 +49,13 @@ function AuthInput({
 export default function AuthPage() {
   const router = useRouter();
   const [globalError, setGlobalError] = useState("");
+  const currentUser = useQuery(api.auth.getCurrentUser);
+
+  useEffect(() => {
+    if (currentUser) {
+      router.push("/dashboard");
+    }
+  }, [currentUser, router]);
 
   const loginForm = useForm({
     defaultValues: { email: "", password: "" },

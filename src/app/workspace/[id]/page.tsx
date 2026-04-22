@@ -170,6 +170,11 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
   const handleTest = async () => {
     if (!selectedPromptId || !selectedKeyId || !selectedModel) return;
     setTesting(true);
+    const runId = `pending-${Date.now()}`;
+    setTestResults((prev) => [
+      { id: runId, name: `${selectedKeyId ? apiKeys?.find(k => k._id === selectedKeyId)?.provider : "test"}/${selectedModel}`, status: "running" },
+      ...prev,
+    ]);
     try {
       await runTestMutation({
         promptId: selectedPromptId,
@@ -181,6 +186,13 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
       });
     } catch (e) {
       console.error(e);
+      setTestResults((prev) =>
+        prev.map((r) =>
+          r.id === runId
+            ? { ...r, status: "failed" as const, error: e instanceof Error ? e.message : "Test failed" }
+            : r
+        )
+      );
     } finally {
       setTesting(false);
     }
@@ -316,7 +328,7 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
         {/* Editor area */}
         <ResizablePanel defaultSize={41} minSize={15} maxSize={75}>
           <div className="flex flex-col h-full min-w-0 overflow-hidden">
-            <Toolbar onSave={handleSave} onBranch={() => {}} onTest={handleTest} onExport={handleExport} onShare={() => {}} saved={saved} testing={testing} branchName="main" />
+            <Toolbar onSave={handleSave} onBranch={() => {}} onTest={handleTest} onExport={handleExport} onShare={() => {}} saved={saved} testing={testing} branchName="main" canTest={Boolean(selectedKeyId && selectedModel)} />
 
             {isMainLoading ? (
               <div className="flex items-center justify-center flex-1"><span className="text-muted-foreground">Loading…</span></div>
