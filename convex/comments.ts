@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getUser } from "./auth";
+import { resolveAuthorNames } from "./auth";
 
 export const getComments = query({
   args: { promptId: v.id("prompts"), versionId: v.optional(v.id("promptVersions")) },
@@ -10,10 +11,19 @@ export const getComments = query({
       .withIndex("by_prompt", (q) => q.eq("promptId", promptId))
       .collect();
 
+    const withAuthors = await (async () => {
+      const authorIds = comments.map((c) => c.authorId);
+      const nameMap = await resolveAuthorNames(ctx, authorIds);
+      return comments.map((c) => ({
+        ...c,
+        authorName: c.authorName ?? nameMap.get(c.authorId) ?? "Unknown",
+      }));
+    })();
+
     if (versionId) {
-      return comments.filter((c) => c.versionId === versionId);
+      return withAuthors.filter((c) => c.versionId === versionId);
     }
-    return comments;
+    return withAuthors;
   },
 });
 
@@ -36,6 +46,7 @@ export const addComment = mutation({
       selectionStart,
       selectionEnd,
       authorId: user._id,
+      authorName: user.name ?? user._id.slice(0, 8),
       resolved: false,
       parentId: undefined,
       createdAt: Date.now(),
@@ -59,6 +70,7 @@ export const replyComment = mutation({
       versionId: "versionId" in parent ? parent.versionId : undefined,
       content,
       authorId: user._id,
+      authorName: user.name ?? user._id.slice(0, 8),
       resolved: false,
       parentId,
       createdAt: Date.now(),

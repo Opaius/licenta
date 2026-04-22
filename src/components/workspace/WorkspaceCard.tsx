@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Layers, Lock, MoreHorizontal, Unlock, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -53,15 +52,8 @@ export function WorkspaceCard({
             </CardTitle>
           </div>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => e.preventDefault()}
-              >
-                <MoreHorizontal className="size-4" />
-              </Button>
+            <DropdownMenuTrigger className="inline-flex items-center justify-center rounded-lg size-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <MoreHorizontal className="size-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem>Edit</DropdownMenuItem>

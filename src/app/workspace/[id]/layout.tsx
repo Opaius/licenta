@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { isAuthenticated, preloadAuthQuery } from "@/lib/auth-server";
+import { isAuthenticated } from "@/lib/auth-server";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -18,8 +18,6 @@ export default async function WorkspaceLayout({
   if (!authed) {
     redirect("/auth");
   }
-
-  await preloadAuthQuery();
 
   return <>{children}</>;
 }

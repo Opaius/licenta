@@ -1,13 +1,13 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { authComponent } from "./auth";
+import { authComponent, getUser } from "./auth";
 
 export const listWorkspaces = query({
   args: {},
   handler: async (ctx) => {
-    const user = await authComponent.getAuthUser(ctx);
-    if (!user || !user.userId) throw new Error("Not authenticated");
-    const userId = user.userId;
+    const user = await getUser(ctx);
+    if (!user || !user._id) throw new Error("Not authenticated");
+    const userId = user._id.toString();
 
     const owned = await ctx.db
       .query("workspaces")
@@ -34,24 +34,26 @@ export const listWorkspaces = query({
       // Count members per workspace
       ctx.db
         .query("workspaceMembers")
-        .withIndex("by_workspace", (q) => q.in("workspaceId", allWorkspaceIds))
         .collect()
         .then((members) => {
           const counts = new Map<string, number>();
           for (const m of members) {
-            counts.set(m.workspaceId.toString(), (counts.get(m.workspaceId.toString()) || 0) + 1);
+            if (allWorkspaceIds.includes(m.workspaceId)) {
+              counts.set(m.workspaceId.toString(), (counts.get(m.workspaceId.toString()) || 0) + 1);
+            }
           }
           return counts;
         }),
       // Count prompts per workspace
       ctx.db
         .query("prompts")
-        .withIndex("by_workspace", (q) => q.in("workspaceId", allWorkspaceIds))
         .collect()
         .then((prompts) => {
           const counts = new Map<string, number>();
           for (const p of prompts) {
-            counts.set(p.workspaceId.toString(), (counts.get(p.workspaceId.toString()) || 0) + 1);
+            if (allWorkspaceIds.includes(p.workspaceId)) {
+              counts.set(p.workspaceId.toString(), (counts.get(p.workspaceId.toString()) || 0) + 1);
+            }
           }
           return counts;
         }),
@@ -82,9 +84,9 @@ export const listWorkspaces = query({
 export const getWorkspace = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
-    const user = await authComponent.getAuthUser(ctx);
-    if (!user || !user.userId) throw new Error("Not authenticated");
-    const userId = user.userId;
+    const user = await getUser(ctx);
+    if (!user || !user._id) throw new Error("Not authenticated");
+    const userId = user._id.toString();
     const workspace = await ctx.db.get(args.workspaceId);
     
     if (!workspace) throw new Error("Workspace not found");
@@ -92,7 +94,7 @@ export const getWorkspace = query({
     const isOwner = workspace.ownerId === userId;
     const membership = await ctx.db
       .query("workspaceMembers")
-      .withIndex("by_user", (q) => q.eq("userId", userId!))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .filter((q) => q.eq(q.field("workspaceId"), args.workspaceId))
       .first();
     
@@ -110,9 +112,9 @@ export const getWorkspace = query({
 export const createWorkspace = mutation({
   args: { name: v.string(), isPublic: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    const user = await authComponent.getAuthUser(ctx);
+    const user = await getUser(ctx);
     if (!user) throw new Error("Not authenticated");
-    const userId = user.userId;
+    const userId = user._id.toString();
     
     if (!args.name || args.name.trim().length === 0) {
       throw new Error("Workspace name is required");
@@ -124,7 +126,7 @@ export const createWorkspace = mutation({
     
     const workspaceId = await ctx.db.insert("workspaces", {
       name: args.name.trim(),
-      ownerId: userId!,
+      ownerId: userId,
       isPublic: args.isPublic ?? false,
       createdAt: Date.now(),
     });
@@ -140,9 +142,9 @@ export const updateWorkspace = mutation({
     isPublic: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const user = await authComponent.getAuthUser(ctx);
+    const user = await getUser(ctx);
     if (!user) throw new Error("Not authenticated");
-    const userId = user.userId;
+    const userId = user._id.toString();
     const workspace = await ctx.db.get(args.workspaceId);
     
     if (!workspace) throw new Error("Workspace not found");
@@ -171,9 +173,9 @@ export const updateWorkspace = mutation({
 export const deleteWorkspace = mutation({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
-    const user = await authComponent.getAuthUser(ctx);
+    const user = await getUser(ctx);
     if (!user) throw new Error("Not authenticated");
-    const userId = user.userId;
+    const userId = user._id.toString();
     const workspace = await ctx.db.get(args.workspaceId);
     
     if (!workspace) throw new Error("Workspace not found");
@@ -204,9 +206,9 @@ export const deleteWorkspace = mutation({
 export const createInvite = mutation({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
-    const user = await authComponent.getAuthUser(ctx);
+    const user = await getUser(ctx);
     if (!user) throw new Error("Not authenticated");
-    const userId = user.userId;
+    const userId = user._id.toString();
     const workspace = await ctx.db.get(args.workspaceId);
     
     if (!workspace) throw new Error("Workspace not found");
@@ -217,7 +219,7 @@ export const createInvite = mutation({
     const inviteId = await ctx.db.insert("invites", {
       workspaceId: args.workspaceId,
       code,
-      creatorId: userId!,
+      creatorId: userId,
       createdAt: Date.now(),
     });
     
@@ -228,9 +230,9 @@ export const createInvite = mutation({
 export const joinViaInvite = mutation({
   args: { code: v.string() },
   handler: async (ctx, args) => {
-    const user = await authComponent.getAuthUser(ctx);
+    const user = await getUser(ctx);
     if (!user) throw new Error("Not authenticated");
-    const userId = user.userId;
+    const userId = user._id.toString();
     
     if (!args.code || args.code.length < 6) {
       throw new Error("Invalid invite code");
@@ -248,7 +250,7 @@ export const joinViaInvite = mutation({
     
     const existingMembership = await ctx.db
       .query("workspaceMembers")
-      .withIndex("by_user", (q) => q.eq("userId", userId!))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .filter((q) => q.eq(q.field("workspaceId"), invite.workspaceId))
       .first();
     
@@ -262,7 +264,7 @@ export const joinViaInvite = mutation({
     
     const memberId = await ctx.db.insert("workspaceMembers", {
       workspaceId: invite.workspaceId,
-      userId: userId!,
+      userId: userId,
       role: "viewer",
       joinedAt: Date.now(),
     });

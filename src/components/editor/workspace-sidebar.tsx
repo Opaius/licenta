@@ -1,18 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
 import {
   FolderIcon,
   FileIcon,
   PlusIcon,
   SearchIcon,
-  MoreHorizontalIcon,
   UsersIcon,
   LockIcon,
+  PencilIcon,
+  CheckIcon,
+  XIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +44,8 @@ interface WorkspaceSidebarProps {
   onSelectPrompt?: (workspaceId: string, promptId: string) => void;
   onCreatePrompt?: (workspaceId: string) => void;
   onCreateWorkspace?: () => void;
+  onRenamePrompt?: (promptId: string, newName: string) => void;
+  onRenameWorkspace?: (workspaceId: string, newName: string) => void;
 }
 
 export function WorkspaceSidebar({
@@ -51,11 +55,32 @@ export function WorkspaceSidebar({
   onSelectPrompt,
   onCreatePrompt,
   onCreateWorkspace,
+  onRenamePrompt,
+  onRenameWorkspace,
 }: WorkspaceSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Set<string>>(
     new Set([activeWorkspaceId || workspaces[0]?.id].filter(Boolean))
   );
+  const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const promptInputRef = useRef<HTMLInputElement>(null);
+  const workspaceInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingPromptId && promptInputRef.current) {
+      promptInputRef.current.focus();
+      promptInputRef.current.select();
+    }
+  }, [editingPromptId]);
+
+  useEffect(() => {
+    if (editingWorkspaceId && workspaceInputRef.current) {
+      workspaceInputRef.current.focus();
+      workspaceInputRef.current.select();
+    }
+  }, [editingWorkspaceId]);
 
   const toggleWorkspace = (id: string) => {
     const newExpanded = new Set(expandedWorkspaces);
@@ -65,6 +90,42 @@ export function WorkspaceSidebar({
       newExpanded.add(id);
     }
     setExpandedWorkspaces(newExpanded);
+  };
+
+  const startRenamePrompt = (prompt: PromptItem) => {
+    setEditingPromptId(prompt.id);
+    setEditValue(prompt.name);
+  };
+
+  const commitRenamePrompt = () => {
+    if (editingPromptId && editValue.trim()) {
+      onRenamePrompt?.(editingPromptId, editValue.trim());
+    }
+    setEditingPromptId(null);
+    setEditValue("");
+  };
+
+  const cancelRenamePrompt = () => {
+    setEditingPromptId(null);
+    setEditValue("");
+  };
+
+  const startRenameWorkspace = (workspace: WorkspaceItem) => {
+    setEditingWorkspaceId(workspace.id);
+    setEditValue(workspace.name);
+  };
+
+  const commitRenameWorkspace = () => {
+    if (editingWorkspaceId && editValue.trim()) {
+      onRenameWorkspace?.(editingWorkspaceId, editValue.trim());
+    }
+    setEditingWorkspaceId(null);
+    setEditValue("");
+  };
+
+  const cancelRenameWorkspace = () => {
+    setEditingWorkspaceId(null);
+    setEditValue("");
   };
 
   const formatDate = (date: Date) => {
@@ -97,50 +158,103 @@ export function WorkspaceSidebar({
         <div className="p-2">
           {workspaces.map((workspace) => (
             <div key={workspace.id} className="mb-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start gap-2"
+              <div
+                role="button"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-muted cursor-pointer group"
                 onClick={() => toggleWorkspace(workspace.id)}
               >
                 <FolderIcon
                   className={cn(
-                    "size-4 transition-transform",
+                    "size-4 transition-transform shrink-0",
                     expandedWorkspaces.has(workspace.id) && "rotate-90"
                   )}
                 />
-                <span className="flex-1 truncate text-left">{workspace.name}</span>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="opacity-0 group-hover:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCreatePrompt?.(workspace.id);
-                  }}
-                >
-                  <PlusIcon className="size-3" />
-                </Button>
-              </Button>
+                {editingWorkspaceId === workspace.id ? (
+                  <div className="flex-1 flex items-center gap-1 min-w-0">
+                    <Input
+                      ref={workspaceInputRef}
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitRenameWorkspace();
+                        if (e.key === "Escape") cancelRenameWorkspace();
+                      }}
+                      onBlur={commitRenameWorkspace}
+                      className="h-6 text-xs py-0"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                ) : (
+                  <span className="flex-1 truncate text-left">{workspace.name}</span>
+                )}
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startRenameWorkspace(workspace);
+                    }}
+                  >
+                    <PencilIcon className="size-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCreatePrompt?.(workspace.id);
+                    }}
+                  >
+                    <PlusIcon className="size-3" />
+                  </Button>
+                </div>
+              </div>
 
               {expandedWorkspaces.has(workspace.id) && (
                 <div className="ml-4 mt-1 space-y-0.5">
                   {workspace.prompts.map((prompt) => (
-                    <Button
+                    <div
                       key={prompt.id}
-                      variant="ghost"
-                      size="sm"
                       className={cn(
-                        "w-full justify-start gap-2 h-8 pl-2",
+                        "flex items-center gap-1 rounded-md px-1 py-0.5 group",
                         activePromptId === prompt.id && "bg-muted"
                       )}
-                      onClick={() => onSelectPrompt?.(workspace.id, prompt.id)}
                     >
-                      <FileIcon className="size-4 text-muted-foreground" />
-                      <span className="flex-1 truncate text-left text-sm">
-                        {prompt.name}
-                      </span>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                      <div
+                        role="button"
+                        className="flex flex-1 items-center gap-2 h-8 pl-2 rounded-md cursor-pointer hover:bg-muted/50 min-w-0"
+                        onClick={() => onSelectPrompt?.(workspace.id, prompt.id)}
+                      >
+                        <FileIcon className="size-4 text-muted-foreground shrink-0" />
+                        {editingPromptId === prompt.id ? (
+                          <Input
+                            ref={promptInputRef}
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") commitRenamePrompt();
+                              if (e.key === "Escape") cancelRenamePrompt();
+                            }}
+                            onBlur={commitRenamePrompt}
+                            className="h-6 text-xs py-0"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <span className="truncate text-left text-sm">{prompt.name}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startRenamePrompt(prompt);
+                          }}
+                        >
+                          <PencilIcon className="size-3" />
+                        </Button>
                         {prompt.sharedWith && prompt.sharedWith > 0 ? (
                           <div className="flex items-center gap-0.5 text-xs text-muted-foreground">
                             <UsersIcon className="size-3" />
@@ -150,7 +264,7 @@ export function WorkspaceSidebar({
                           <LockIcon className="size-3 text-muted-foreground" />
                         )}
                       </div>
-                    </Button>
+                    </div>
                   ))}
                 </div>
               )}

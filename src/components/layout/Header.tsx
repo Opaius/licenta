@@ -14,14 +14,6 @@ import {
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 
-// Type for Convex auth user (from better-auth)
-interface ConvexAuthUser {
-  userId: string;
-  email: string;
-  name?: string;
-  avatarUrl?: string;
-}
-
 interface HeaderProps {
   user?: {
     name: string;
@@ -31,11 +23,12 @@ interface HeaderProps {
 }
 
 export function Header({ user }: HeaderProps) {
-  const currentUser = useQuery<ConvexAuthUser | null>(api.auth.getCurrentUser);
+  const currentUser = useQuery(api.auth.getCurrentUser);
   const displayUser = user || currentUser || {
     name: "User",
     email: "user@example.com",
   };
+  const avatarUrl = (displayUser as any).avatarUrl ?? (currentUser as any)?.image ?? undefined;
 
   // Use email as name if name not available
   const displayName = displayUser.name || (displayUser.email ? displayUser.email.split('@')[0] : "User");
@@ -66,8 +59,8 @@ export function Header({ user }: HeaderProps) {
           <DropdownMenuTrigger className={buttonVariants({className:"relative size-8 rounded-full", variant:"ghost"})}>
 
 <Avatar className="size-8">
-  {displayUser.avatarUrl && (
-    <img src={displayUser.avatarUrl} alt={displayName} />
+  {avatarUrl && (
+    <img src={avatarUrl} alt={displayName} />
   )}
   <AvatarFallback>{initials}</AvatarFallback>
 </Avatar>

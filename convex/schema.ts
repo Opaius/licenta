@@ -45,8 +45,10 @@ export default defineSchema({
     promptId: v.id("prompts"),
     content: v.string(),
     version: v.number(),
+    changes: v.optional(v.number()),
     createdAt: v.number(),
     authorId: v.string(),
+    authorName: v.optional(v.string()),
   })
     .index("by_prompt", ["promptId"])
     .index("by_prompt_version", ["promptId", "version"]),
@@ -74,6 +76,7 @@ export default defineSchema({
     selectionStart: v.optional(v.number()),
     selectionEnd: v.optional(v.number()),
     authorId: v.string(),
+    authorName: v.optional(v.string()),
     resolved: v.boolean(),
     parentId: v.optional(v.id("comments")),
     createdAt: v.number(),

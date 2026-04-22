@@ -10,85 +10,54 @@ interface PromptEditorProps {
   onCursorChange?: (line: number, column: number) => void;
 }
 
-// Custom language definition for template variables
 const registerPromptLanguage = (monaco: typeof import("monaco-editor")) => {
-  // Register custom language
-  monaco.languages.register({ id: "prompt-template" });
-
-  // Tokenizer for template variables {{variable}}
-  monaco.languages.setMonarchTokensProvider("prompt-template", {
+  monaco.languages.setMonarchTokensProvider("markdown", {
     tokenizer: {
       root: [
-        // Template variables {{variable}}
         [/\{\{[^}]+\}\}/, "template-variable"],
-        // Strings
-        [/"([^"\\]|\\.)*$/, "string.invalid"],
-        [/"/, "string", "@string"],
-        // Comments
-        [/\/\/.*$/, "comment"],
-        [/\/\*/, "comment", "@comment"],
-        // Numbers
-        [/\d+/, "number"],
-        // Keywords
-        [/system|user|assistant|role|content|temperature|top_p|max_tokens/, "keyword"],
-      ],
-      string: [
-        [/[^\\"]+/, "string"],
-        [/\\./, "string.escape"],
-        [/"/, "string", "@pop"],
-      ],
-      comment: [
-        [/[^/*]+/, "comment"],
-        [/\*\//, "comment", "@pop"],
-        [/[/*]/, "comment"],
+        [/^#{1,6}\s+.*/, "header"],
+        [/[\*_]{1,2}([^\*_]+)[\*_]{1,2}/, "emphasis"],
+        [/^```[\s\S]*?^```/, "code.block"],
+        [`/^` + '`' + `.*` + '`' + `/`, "code.inline"],
+        [/^\s*[-\*\+]\s+/, "list"],
+        [/^\s*\d+\.\s+/, "list.numbered"],
+        [/\[([^\]]+)\]\(([^)]+)\)/, "link"],
+        [/^>\s+/, "quote"],
+        [/^-{3,}\s*$/, "hr"],
+        [/./, "source"],
       ],
     },
   });
 
-  // Define theme for template variables
-  monaco.editor.defineTheme("prompt-theme", {
-    base: "vs",
-    inherit: true,
-    rules: [
-      { token: "template-variable", foreground: "8b5cf6", fontStyle: "bold" },
-      { token: "string", foreground: "22c55e" },
-      { token: "comment", foreground: "6b7280", fontStyle: "italic" },
-      { token: "keyword", foreground: "3b82f6", fontStyle: "bold" },
-      { token: "number", foreground: "f59e0b" },
-    ],
-    colors: {
-      "editor.background": "#ffffff",
-      "editor.foreground": "#1f2937",
-      "editor.lineHighlightBackground": "#f3f4f6",
-      "editor.selectionBackground": "#bfdbfe",
-      "editorLineNumber.foreground": "#9ca3af",
-      "editorLineNumber.activeForeground": "#4b5563",
-    },
-  });
-
-  // Dark theme
   monaco.editor.defineTheme("prompt-theme-dark", {
     base: "vs-dark",
     inherit: true,
     rules: [
-      { token: "template-variable", foreground: "a78bfa", fontStyle: "bold" },
-      { token: "string", foreground: "4ade80" },
-      { token: "comment", foreground: "9ca3af", fontStyle: "italic" },
-      { token: "keyword", foreground: "60a5fa", fontStyle: "bold" },
-      { token: "number", foreground: "fbbf24" },
+      { token: "template-variable", foreground: "c084fc", fontStyle: "bold" },
+      { token: "header", foreground: "93c5fd", fontStyle: "bold" },
+      { token: "emphasis", foreground: "fca5a5" },
+      { token: "code.block", foreground: "86efac" },
+      { token: "code.inline", foreground: "86efac" },
+      { token: "list", foreground: "fcd34d" },
+      { token: "list.numbered", foreground: "fcd34d" },
+      { token: "link", foreground: "67e8f9" },
+      { token: "quote", foreground: "d1d5db", fontStyle: "italic" },
+      { token: "hr", foreground: "6b7280" },
+      { token: "source", foreground: "e5e7eb" },
     ],
     colors: {
-      "editor.background": "#1f2937",
-      "editor.foreground": "#f9fafb",
-      "editor.lineHighlightBackground": "#374151",
-      "editor.selectionBackground": "#3b82f6",
-      "editorLineNumber.foreground": "#6b7280",
-      "editorLineNumber.activeForeground": "#9ca3af",
+      "editor.background": "#0f172a",
+      "editor.foreground": "#e2e8f0",
+      "editor.lineHighlightBackground": "#1e293b",
+      "editor.selectionBackground": "#334155",
+      "editorLineNumber.foreground": "#64748b",
+      "editorLineNumber.activeForeground": "#94a3b8",
+      "editor.inactiveSelectionBackground": "#1e293b",
     },
   });
 
-  // Configure auto-completion for common template variables
-  monaco.languages.registerCompletionItemProvider("prompt-template", {
+  monaco.languages.registerCompletionItemProvider("markdown", {
+    triggerCharacters: ["{"],
     provideCompletionItems: (model, position) => {
       const word = model.getWordUntilPosition(position);
       const range = {
@@ -99,16 +68,14 @@ const registerPromptLanguage = (monaco: typeof import("monaco-editor")) => {
       };
 
       const suggestions = [
-        { label: "{{name}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{name}}", range },
         { label: "{{input}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{input}}", range },
         { label: "{{context}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{context}}", range },
         { label: "{{query}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{query}}", range },
-        { label: "{{system_prompt}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{system_prompt}}", range },
         { label: "{{user_message}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{user_message}}", range },
-      ].map((item) => ({
-        ...item,
-        detail: "Template variable",
-      }));
+        { label: "{{system_prompt}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{system_prompt}}", range },
+        { label: "{{temperature|0.7}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{temperature|0.7}}", range },
+        { label: "{{max_tokens|2000}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{max_tokens|2000}}", range },
+      ].map((item) => ({ ...item, detail: "Template variable" }));
 
       return { suggestions };
     },
@@ -118,18 +85,28 @@ const registerPromptLanguage = (monaco: typeof import("monaco-editor")) => {
 export function PromptEditor({ value, onChange, onCursorChange }: PromptEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     registerPromptLanguage(monaco);
 
-    // Set cursor position callback
     if (onCursorChange) {
       editor.onDidChangeCursorPosition((e) => {
         onCursorChange(e.position.lineNumber, e.position.column);
       });
     }
 
-    // Focus editor
+    const container = containerRef.current;
+    if (!container) return;
+
+    const ro = new ResizeObserver(() => {
+      if (!container) return;
+      const { width, height } = container.getBoundingClientRect();
+      editor.layout({ width, height });
+    });
+    ro.observe(container);
+
     editor.focus();
   }, [onCursorChange]);
 
@@ -140,12 +117,13 @@ export function PromptEditor({ value, onChange, onCursorChange }: PromptEditorPr
   }, [onChange]);
 
   return (
-    <div className="h-full w-full overflow-hidden rounded-lg border border-border">
+    <div ref={containerRef} className="h-full w-full overflow-hidden rounded-lg border border-border">
       <Editor
         height="100%"
-        defaultLanguage="prompt-template"
-        language="prompt-template"
-        theme="prompt-theme"
+        width="100%"
+        defaultLanguage="markdown"
+        language="markdown"
+        theme="prompt-theme-dark"
         value={value}
         onChange={handleChange}
         onMount={handleEditorMount}
@@ -155,7 +133,6 @@ export function PromptEditor({ value, onChange, onCursorChange }: PromptEditorPr
           fontFamily: "var(--font-mono)",
           lineNumbers: "on",
           wordWrap: "on",
-          automaticLayout: true,
           scrollBeyondLastLine: false,
           padding: { top: 16, bottom: 16 },
           suggestOnTriggerCharacters: true,
@@ -165,6 +142,8 @@ export function PromptEditor({ value, onChange, onCursorChange }: PromptEditorPr
           cursorBlinking: "smooth",
           cursorSmoothCaretAnimation: "on",
           smoothScrolling: true,
+          folding: true,
+          renderWhitespace: "boundary",
         }}
       />
     </div>

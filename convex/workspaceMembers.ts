@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { authComponent } from "./auth";
+import { getUser } from "./auth";
 
 export const getMembership = query({
   args: { workspaceId: v.id("workspaces"), userId: v.string() },
@@ -16,9 +16,9 @@ export const getMembership = query({
 export const listMembers = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
-    const user = await authComponent.getAuthUser(ctx);
-    if (!user || !user.userId) throw new Error("Not authenticated");
-    const userId = user.userId;
+    const user = await getUser(ctx);
+    if (!user || !user._id) throw new Error("Not authenticated");
+    const userId = user._id.toString();
     const workspace = await ctx.db.get(args.workspaceId);
     
     if (!workspace) throw new Error("Workspace not found");
@@ -26,7 +26,7 @@ export const listMembers = query({
     if (workspace.ownerId !== userId && !workspace.isPublic) {
       const membership = await ctx.db
         .query("workspaceMembers")
-        .withIndex("by_user", (q) => q.eq("userId", userId!))
+        .withIndex("by_user", (q) => q.eq("userId", userId))
         .filter((q) => q.eq(q.field("workspaceId"), args.workspaceId))
         .first();
       
@@ -49,9 +49,9 @@ export const addMember = mutation({
     role: v.union(v.literal("editor"), v.literal("viewer")),
   },
   handler: async (ctx, args) => {
-    const user = await authComponent.getAuthUser(ctx);
-    if (!user || !user.userId) throw new Error("Not authenticated");
-    const currentUserId = user.userId;
+    const user = await getUser(ctx);
+    if (!user || !user._id) throw new Error("Not authenticated");
+    const currentUserId = user._id.toString();
     const workspace = await ctx.db.get(args.workspaceId);
     
     if (!workspace) throw new Error("Workspace not found");
@@ -85,9 +85,9 @@ export const addMember = mutation({
 export const removeMember = mutation({
   args: { workspaceId: v.id("workspaces"), userId: v.string() },
   handler: async (ctx, args) => {
-    const user = await authComponent.getAuthUser(ctx);
-    if (!user || !user.userId) throw new Error("Not authenticated");
-    const currentUserId = user.userId;
+    const user = await getUser(ctx);
+    if (!user || !user._id) throw new Error("Not authenticated");
+    const currentUserId = user._id.toString();
     const workspace = await ctx.db.get(args.workspaceId);
     
     if (!workspace) throw new Error("Workspace not found");
@@ -118,9 +118,9 @@ export const updateMemberRole = mutation({
     role: v.union(v.literal("editor"), v.literal("viewer")),
   },
   handler: async (ctx, args) => {
-    const user = await authComponent.getAuthUser(ctx);
-    if (!user || !user.userId) throw new Error("Not authenticated");
-    const currentUserId = user.userId;
+    const user = await getUser(ctx);
+    if (!user || !user._id) throw new Error("Not authenticated");
+    const currentUserId = user._id.toString();
     const workspace = await ctx.db.get(args.workspaceId);
     
     if (!workspace) throw new Error("Workspace not found");

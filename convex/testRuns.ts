@@ -33,7 +33,8 @@ async function callProvider(
 ): Promise<TestResult> {
   const start = Date.now();
 
-  await new Promise((resolve) => setTimeout(resolve, 100 + Math.random() * 200));
+  // Simulate latency without setTimeout (not allowed in Convex mutations)
+  const latency = 100 + Math.floor(Math.random() * 200);
 
   const response = MOCK_RESPONSES[provider](prompt, model);
 
@@ -41,8 +42,25 @@ async function callProvider(
     provider,
     model,
     response,
-    latency: Date.now() - start,
+    latency,
   };
+}
+
+async function getWorkspaceAccess(
+  ctx: any,
+  workspaceId: string,
+  userId: string
+): Promise<"owner" | "editor" | "viewer" | null> {
+  const workspace = await ctx.db.get(workspaceId);
+  if (workspace?.ownerId === userId) return "owner";
+
+  const membership = await ctx.db
+    .query("workspaceMembers")
+    .withIndex("by_user", (q: any) => q.eq("userId", userId))
+    .filter((q: any) => q.eq(q.field("workspaceId"), workspaceId))
+    .first();
+
+  return membership?.role ?? null;
 }
 
 export const runTest = mutation({
@@ -65,13 +83,8 @@ export const runTest = mutation({
     const prompt = await ctx.db.get(args.promptId);
     if (!prompt) throw new Error("Prompt not found");
 
-    const membership = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter((q) => q.eq(q.field("workspaceId"), prompt.workspaceId))
-      .first();
-
-    if (!membership || membership.role === "viewer") {
+    const access = await getWorkspaceAccess(ctx, prompt.workspaceId, user._id.toString());
+    if (!access || access === "viewer") {
       throw new Error("Access denied");
     }
 
@@ -114,13 +127,8 @@ export const getTestRun = query({
     const prompt = await ctx.db.get(run.promptId);
     if (!prompt) throw new Error("Prompt not found");
 
-    const membership = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter((q) => q.eq(q.field("workspaceId"), prompt.workspaceId))
-      .first();
-
-    if (!membership) throw new Error("Access denied");
+    const access = await getWorkspaceAccess(ctx, prompt.workspaceId, user._id.toString());
+    if (!access) throw new Error("Access denied");
 
     return run;
   },
@@ -135,13 +143,8 @@ export const listTestRuns = query({
     const prompt = await ctx.db.get(args.promptId);
     if (!prompt) throw new Error("Prompt not found");
 
-    const membership = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter((q) => q.eq(q.field("workspaceId"), prompt.workspaceId))
-      .first();
-
-    if (!membership) throw new Error("Access denied");
+    const access = await getWorkspaceAccess(ctx, prompt.workspaceId, user._id.toString());
+    if (!access) throw new Error("Access denied");
 
     const runs = await ctx.db
       .query("testRuns")

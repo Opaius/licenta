@@ -20,8 +20,14 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       enabled: true,
       requireEmailVerification: false,
     },
-    trustedOrigins:[siteUrl],
-    plugins: [convex({ authConfig })],
+    plugins: [
+      convex({
+        authConfig,
+        jwt: {
+          expirationSeconds: 60 * 60 * 24 * 7,
+        },
+      }),
+    ],
   });
 };
 
@@ -33,5 +39,37 @@ export const getCurrentUser = query({
 });
 
 export const getUser = async (ctx: any) => {
-  return authComponent.getAuthUser(ctx);
+  try {
+    return await authComponent.getAuthUser(ctx);
+  } catch {
+    return null;
+  }
+};
+
+export const getUserName = async (ctx: any): Promise<string> => {
+  const user = await getUser(ctx);
+  return (user as any)?.name || (user as any)?.email?.split("@")[0] || user?._id?.toString().slice(0, 8) || "Unknown";
+};
+
+export const resolveAuthorNames = async (ctx: any, authorIds: string[]): Promise<Map<string, string>> => {
+  const names = new Map<string, string>();
+  const uniqueIds = [...new Set(authorIds)];
+
+  for (const authorId of uniqueIds) {
+    try {
+      const user = await ctx.runQuery(components.betterAuth.adapter.findOne, {
+        model: "user",
+        where: [{ field: "_id", operator: "eq" as const, value: authorId }],
+      });
+      if (user) {
+        names.set(authorId, (user as any).name || (user as any).email?.split("@")[0] || authorId.slice(0, 8));
+      } else {
+        names.set(authorId, authorId.slice(0, 8));
+      }
+    } catch {
+      names.set(authorId, authorId.slice(0, 8));
+    }
+  }
+
+  return names;
 };

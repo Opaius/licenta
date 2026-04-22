@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { authComponent } from "./auth";
+import { getUser } from "./auth";
 
 type NotificationType = "mention" | "comment" | "vote" | "invite";
 
@@ -15,9 +15,9 @@ interface NotificationData {
 
 // Helper to get current userId
 async function getUserIdOrThrow(ctx: any): Promise<string> {
-  const user = await authComponent.getAuthUser(ctx);
-  if (!user?.userId) throw new Error("Not authenticated");
-  return user.userId!;
+  const user = await getUser(ctx);
+  if (!user?._id) throw new Error("Not authenticated");
+  return user._id.toString();
 }
 
 // === QUERIES ===

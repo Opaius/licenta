@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useQuery, useMutation, Authenticated, Unauthenticated, AuthLoading } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Skeleton as BoneSkeleton } from "boneyard-js/react";
 import { Plus, Search, Loader2 } from "lucide-react";
@@ -58,7 +59,19 @@ function DashboardFallback() {
   );
 }
 
-export default function DashboardPage() {
+function RedirectToAuth() {
+  const router = useRouter();
+  useEffect(() => {
+    router.push("/auth");
+  }, [router]);
+  return (
+    <div className="flex h-screen items-center justify-center">
+      <Loader2 className="size-8 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
+
+function DashboardContent() {
   const workspaces = useQuery(api.workspaces.listWorkspaces);
   const createWorkspace = useMutation(api.workspaces.createWorkspace);
   const [searchQuery, setSearchQuery] = useState("");
@@ -165,5 +178,23 @@ export default function DashboardPage() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <>
+      <AuthLoading>
+        <div className="flex h-screen items-center justify-center">
+          <Loader2 className="size-8 animate-spin text-muted-foreground" />
+        </div>
+      </AuthLoading>
+      <Unauthenticated>
+        <RedirectToAuth />
+      </Unauthenticated>
+      <Authenticated>
+        <DashboardContent />
+      </Authenticated>
+    </>
   );
 }

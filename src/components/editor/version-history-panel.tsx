@@ -86,7 +86,10 @@ export function VersionHistoryPanel({
                       {version.message}
                     </p>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{version.changes} changes</span>
+                      {version.changes > 0 && <span>{version.changes} changes</span>}
+                      {version.changes === 0 && version.message?.toLowerCase().includes("version 1") && (
+                        <span className="italic">Initial version</span>
+                      )}
                       {version.id === currentVersionId && (
                         <span className="text-primary font-medium">Current</span>
                       )}

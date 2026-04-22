@@ -13,9 +13,9 @@ import { Button } from "@/components/ui/button"
 
 export default function DebugSettingsPage() {
   const router = useRouter();
-  const { data: session, isLoading } = authClient.useSession();
+  const { data: session, isPending } = authClient.useSession();
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="size-8 animate-spin text-muted-foreground" />

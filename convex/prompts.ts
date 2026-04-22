@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { authComponent } from "./auth";
+import { getUser, getUserName, resolveAuthorNames } from "./auth";
 
 function extractTemplateVars(content: string): string[] {
   const regex = /\{\{(\w+)\}\}/g;
@@ -12,10 +12,21 @@ function extractTemplateVars(content: string): string[] {
   return Array.from(vars);
 }
 
+function countChanges(oldContent: string, newContent: string): number {
+  const oldLines = oldContent.split("\n");
+  const newLines = newContent.split("\n");
+  let changes = 0;
+  const maxLen = Math.max(oldLines.length, newLines.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (oldLines[i] !== newLines[i]) changes++;
+  }
+  return changes;
+}
+
 async function getUserIdOrThrow(ctx: any): Promise<string> {
-  const user = await authComponent.getAuthUser(ctx);
-  if (!user?.userId) throw new Error("Not authenticated");
-  return user.userId!;
+  const user = await getUser(ctx);
+  if (!user?._id) throw new Error("Not authenticated");
+  return user._id.toString();
 }
 
 async function getWorkspaceAccess(
@@ -23,6 +34,9 @@ async function getWorkspaceAccess(
   workspaceId: any,
   userId: string
 ): Promise<"owner" | "editor" | "viewer" | null> {
+  const workspace = await ctx.db.get(workspaceId);
+  if (workspace?.ownerId === userId) return "owner";
+
   const membership = await ctx.db
     .query("workspaceMembers")
     .withIndex("by_user", (q: any) => q.eq("userId", userId))
@@ -87,6 +101,8 @@ export const createPrompt = mutation({
     const templateVars = extractTemplateVars(args.content);
     const now = Date.now();
 
+    const authorName = await getUserName(ctx);
+
     const promptId = await ctx.db.insert("prompts", {
       workspaceId: args.workspaceId,
       title: args.title,
@@ -101,8 +117,10 @@ export const createPrompt = mutation({
       promptId,
       content: args.content,
       version: 1,
+      changes: 0,
       createdAt: now,
       authorId: userId,
+      authorName,
     });
 
     return { promptId, version: 1 };
@@ -116,6 +134,7 @@ export const updatePrompt = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await getUserIdOrThrow(ctx);
+    const authorName = await getUserName(ctx);
     const prompt = await ctx.db.get(args.promptId);
     if (!prompt) throw new Error("Prompt not found");
 
@@ -124,6 +143,17 @@ export const updatePrompt = mutation({
     const templateVars = extractTemplateVars(args.content);
     const newVersion = prompt.currentVersion + 1;
     const now = Date.now();
+
+    const prevVersion = await ctx.db
+      .query("promptVersions")
+      .withIndex("by_prompt_version", (q: any) =>
+        q.eq("promptId", args.promptId).eq("version", prompt.currentVersion)
+      )
+      .first();
+
+    const changes = prevVersion
+      ? countChanges(prevVersion.content, args.content)
+      : args.content.length;
 
     await ctx.db.patch(args.promptId, {
       content: args.content,
@@ -135,11 +165,40 @@ export const updatePrompt = mutation({
       promptId: args.promptId,
       content: args.content,
       version: newVersion,
+      changes,
       createdAt: now,
       authorId: userId,
+      authorName,
     });
 
     return { version: newVersion };
+  },
+});
+
+export const updatePromptTitle = mutation({
+  args: {
+    promptId: v.id("prompts"),
+    title: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getUserIdOrThrow(ctx);
+    const prompt = await ctx.db.get(args.promptId);
+    if (!prompt) throw new Error("Prompt not found");
+
+    await requireWriteAccess(ctx, prompt.workspaceId, userId);
+
+    if (!args.title || args.title.trim().length === 0) {
+      throw new Error("Prompt title cannot be empty");
+    }
+    if (args.title.length > 200) {
+      throw new Error("Prompt title must be 200 characters or less");
+    }
+
+    await ctx.db.patch(args.promptId, {
+      title: args.title.trim(),
+    });
+
+    return { success: true };
   },
 });
 
@@ -194,14 +253,19 @@ export const getPromptVersions = query({
       .order("desc")
       .collect();
 
+    const authorIds = versions.map((v) => v.authorId);
+    const nameMap = await resolveAuthorNames(ctx, authorIds);
+
     return versions.map((v) => ({
       _id: v._id,
       _creationTime: v._creationTime,
       promptId: v.promptId,
       content: v.content,
       version: v.version,
+      changes: v.changes,
       createdAt: v.createdAt,
       authorId: v.authorId,
+      authorName: v.authorName ?? nameMap.get(v.authorId) ?? "Unknown",
     }));
   },
 });
@@ -213,6 +277,7 @@ export const restoreVersion = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await getUserIdOrThrow(ctx);
+    const authorName = await getUserName(ctx);
     const prompt = await ctx.db.get(args.promptId);
     if (!prompt) throw new Error("Prompt not found");
 
@@ -228,6 +293,17 @@ export const restoreVersion = mutation({
     const newVersion = prompt.currentVersion + 1;
     const now = Date.now();
 
+    const prevVersion = await ctx.db
+      .query("promptVersions")
+      .withIndex("by_prompt_version", (q: any) =>
+        q.eq("promptId", args.promptId).eq("version", prompt.currentVersion)
+      )
+      .first();
+
+    const changes = prevVersion
+      ? countChanges(prevVersion.content, targetVersion.content)
+      : targetVersion.content.length;
+
     await ctx.db.patch(args.promptId, {
       content: targetVersion.content,
       templateVars,
@@ -238,8 +314,10 @@ export const restoreVersion = mutation({
       promptId: args.promptId,
       content: targetVersion.content,
       version: newVersion,
+      changes,
       createdAt: now,
       authorId: userId,
+      authorName,
     });
 
     return { version: newVersion };
@@ -316,6 +394,7 @@ export const mergeBranch = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await getUserIdOrThrow(ctx);
+    const authorName = await getUserName(ctx);
     const prompt = await ctx.db.get(args.promptId);
     if (!prompt) throw new Error("Prompt not found");
 
@@ -331,6 +410,17 @@ export const mergeBranch = mutation({
     const newVersion = prompt.currentVersion + 1;
     const now = Date.now();
 
+    const prevVersion = await ctx.db
+      .query("promptVersions")
+      .withIndex("by_prompt_version", (q: any) =>
+        q.eq("promptId", args.promptId).eq("version", prompt.currentVersion)
+      )
+      .first();
+
+    const changes = prevVersion
+      ? countChanges(prevVersion.content, args.content)
+      : args.content.length;
+
     await ctx.db.patch(args.promptId, {
       content: args.content,
       templateVars,
@@ -341,8 +431,10 @@ export const mergeBranch = mutation({
       promptId: args.promptId,
       content: args.content,
       version: newVersion,
+      changes,
       createdAt: now,
       authorId: userId,
+      authorName,
     });
 
     await ctx.db.delete(args.branchId);

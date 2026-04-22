@@ -43,7 +43,7 @@ export function Toolbar({
   };
 
   return (
-    <div className="flex items-center gap-1 p-2 border-b bg-background">
+    <div className="flex items-center gap-1 p-2 border-b bg-background min-w-0">
       <Button
         variant="ghost"
         size="sm"
@@ -53,12 +53,12 @@ export function Toolbar({
         {saved ? (
           <>
             <CheckIcon className="size-4 mr-1 text-green-600" />
-            Saved
+            <span className="hidden sm:inline">Saved</span>
           </>
         ) : (
           <>
             <SaveIcon className="size-4 mr-1" />
-            Save
+            <span className="hidden sm:inline">Save</span>
           </>
         )}
       </Button>
@@ -72,9 +72,9 @@ export function Toolbar({
       >
         <GitBranchIcon className="size-4 mr-1" />
         {branchName ? (
-          <span className="max-w-[80px] truncate">{branchName}</span>
+          <span className="max-w-[80px] truncate hidden sm:inline">{branchName}</span>
         ) : (
-          "Branch"
+          <span className="hidden sm:inline">Branch</span>
         )}
       </Button>
 
@@ -87,35 +87,35 @@ export function Toolbar({
         disabled={testing}
       >
         <PlayIcon className="size-4 mr-1" />
-        {testing ? "Testing..." : "Test"}
+        <span className="hidden sm:inline">{testing ? "Testing..." : "Test"}</span>
       </Button>
 
-      <Separator orientation="vertical" className="mx-1 h-6" />
-
-      <div className="flex items-center gap-1 ml-auto">
+      <div className="flex items-center gap-1 ml-auto shrink-0">
         <Button
           variant="ghost"
           size="sm"
           onClick={onExport}
+          className="shrink-0"
         >
           <DownloadIcon className="size-4 mr-1" />
-          Export
+          <span className="hidden sm:inline">Export</span>
         </Button>
 
         <Button
           variant="ghost"
           size="sm"
           onClick={copied ? undefined : handleCopyLink}
+          className="shrink-0"
         >
           {copied ? (
             <>
               <CheckIcon className="size-4 mr-1 text-green-600" />
-              Copied
+              <span className="hidden sm:inline">Copied</span>
             </>
           ) : (
             <>
               <CopyIcon className="size-4 mr-1" />
-              Share
+              <span className="hidden sm:inline">Share</span>
             </>
           )}
         </Button>
