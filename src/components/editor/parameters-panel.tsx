@@ -1,11 +1,28 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 import {
   HashIcon,
   TypeIcon,
@@ -16,9 +33,9 @@ import {
   ChevronDownIcon,
   LoaderIcon,
   KeyIcon,
-  CpuIcon,
   SlidersIcon,
   Braces,
+  PlusIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +52,7 @@ export interface ModelOption {
 }
 
 interface ParametersPanelProps {
+  workspaceId: string;
   content: string;
   testValues: Record<string, string>;
   onTestValuesChange: (values: Record<string, string>) => void;
@@ -43,6 +61,8 @@ interface ParametersPanelProps {
   selectedKeyId?: string;
   onKeyChange?: (keyId: string) => void;
   models?: ModelOption[];
+  selectedModel?: string;
+  onModelChange?: (model: string) => void;
   onTemperatureChange?: (v: number) => void;
   onMaxTokensChange?: (v: number) => void;
   temperature?: number;
@@ -105,6 +125,7 @@ function SectionHeader({ icon: Icon, title, action }: { icon: React.ElementType;
 }
 
 export function ParametersPanel({
+  workspaceId,
   content,
   testValues,
   onTestValuesChange,
@@ -113,6 +134,8 @@ export function ParametersPanel({
   selectedKeyId,
   onKeyChange,
   models = [],
+  selectedModel,
+  onModelChange,
   onTemperatureChange,
   onMaxTokensChange,
   temperature,
@@ -121,7 +144,13 @@ export function ParametersPanel({
   const [parameters, setParameters] = useState<Parameter[]>([]);
   const [showKeyDropdown, setShowKeyDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [showAddKeyDialog, setShowAddKeyDialog] = useState(false);
+  const [newKeyProvider, setNewKeyProvider] = useState("openai");
+  const [newKeyLabel, setNewKeyLabel] = useState("");
+  const [newKeySecret, setNewKeySecret] = useState("");
+  const [addingKey, setAddingKey] = useState(false);
+
+  const addApiKey = useMutation(api.apiKeys.addApiKey);
 
   useEffect(() => {
     setParameters(extractParameters(content));
@@ -137,6 +166,26 @@ export function ParametersPanel({
   const handleClear = useCallback(() => {
     onTestValuesChange({});
   }, [onTestValuesChange]);
+
+  const handleAddKey = async () => {
+    if (!newKeyLabel.trim() || !newKeySecret.trim()) return;
+    setAddingKey(true);
+    try {
+      await addApiKey({
+        workspaceId: workspaceId as any,
+        provider: newKeyProvider as any,
+        label: newKeyLabel.trim(),
+        secret: newKeySecret.trim(),
+      });
+      setNewKeyLabel("");
+      setNewKeySecret("");
+      setShowAddKeyDialog(false);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setAddingKey(false);
+    }
+  };
 
   const provider = selectedKeyId ? apiKeys.find(k => k._id === selectedKeyId)?.provider : null;
 
@@ -204,6 +253,61 @@ export function ParametersPanel({
                   </div>
                 )}
               </div>
+              <Dialog open={showAddKeyDialog} onOpenChange={setShowAddKeyDialog}>
+                <DialogTrigger className="w-full">
+                  <Button variant="ghost" size="sm" className="w-full h-7 text-xs gap-1">
+                    <PlusIcon className="size-3" />
+                    Add API Key
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Add API Key</DialogTitle>
+                    <DialogDescription>
+                      Add a new API key for this workspace. The key will be encrypted before storage.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 py-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">Provider</label>
+                      <Select value={newKeyProvider} onValueChange={(v) => v && setNewKeyProvider(v)}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="openai">OpenAI</SelectItem>
+                          <SelectItem value="anthropic">Anthropic</SelectItem>
+                          <SelectItem value="ollama">Ollama</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">Label</label>
+                      <Input
+                        placeholder="e.g. Production OpenAI"
+                        value={newKeyLabel}
+                        onChange={(e) => setNewKeyLabel(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">Secret Key</label>
+                      <Input
+                        type="password"
+                        placeholder="sk-..."
+                        value={newKeySecret}
+                        onChange={(e) => setNewKeySecret(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button size="sm" onClick={handleAddKey} disabled={addingKey || !newKeyLabel.trim() || !newKeySecret.trim()}>
+                      {addingKey ? "Adding..." : "Add Key"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
 
             <div className="space-y-1.5">
@@ -228,7 +332,7 @@ export function ParametersPanel({
                       <button
                         key={model.id}
                         onClick={() => {
-                          setSelectedModel(model.name);
+                          onModelChange?.(model.name);
                           setShowModelDropdown(false);
                         }}
                         className={cn(

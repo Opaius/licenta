@@ -2,48 +2,8 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getUser } from "./auth";
 
-type Provider = "openai" | "anthropic" | "ollama";
-
-type TestConfig = {
-  provider: Provider;
-  model: string;
-  temperature?: number;
-  topP?: number;
-  maxTokens?: number;
-};
-
-type TestResult = {
-  provider: string;
-  model: string;
-  response: string;
-  latency: number;
-  error?: string;
-};
-
-const MOCK_RESPONSES: Record<Provider, (prompt: string, model: string) => string> = {
-  openai: (prompt, model) => `[OpenAI/${model}] Processed: "${prompt.slice(0, 50)}..."`,
-  anthropic: (prompt, model) => `[Anthropic/${model}] Analyzed: "${prompt.slice(0, 50)}..."`,
-  ollama: (prompt, model) => `[Ollama/${model}] Local response to: "${prompt.slice(0, 50)}..."`,
-};
-
-async function callProvider(
-  provider: Provider,
-  model: string,
-  prompt: string
-): Promise<TestResult> {
-  const start = Date.now();
-
-  // Simulate latency without setTimeout (not allowed in Convex mutations)
-  const latency = 100 + Math.floor(Math.random() * 200);
-
-  const response = MOCK_RESPONSES[provider](prompt, model);
-
-  return {
-    provider,
-    model,
-    response,
-    latency,
-  };
+function decodeKey(encoded: string): string {
+  return Buffer.from(encoded, "base64").toString("utf8");
 }
 
 async function getWorkspaceAccess(
@@ -63,18 +23,113 @@ async function getWorkspaceAccess(
   return membership?.role ?? null;
 }
 
+function substituteVars(content: string, values: Record<string, string>): string {
+  return content.replace(/\{\{(\w+)(?:\s*\|\s*[^}]+)?\}\}/g, (_, name) => {
+    return values[name] ?? `{{${name}}}`;
+  });
+}
+
+async function callOpenAI(secret: string, model: string, prompt: string, temperature?: number, maxTokens?: number) {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: temperature ?? 0.7,
+      max_tokens: maxTokens ?? 2048,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`OpenAI error: ${err}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
+async function callAnthropic(secret: string, model: string, prompt: string, temperature?: number, maxTokens?: number) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": secret,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens ?? 2048,
+      temperature: temperature ?? 0.7,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Anthropic error: ${err}`);
+  }
+  const data = await res.json();
+  return data.content?.[0]?.text ?? "";
+}
+
+async function callOllama(model: string, prompt: string, temperature?: number) {
+  const res = await fetch("http://localhost:11434/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      prompt,
+      stream: false,
+      options: { temperature: temperature ?? 0.7 },
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Ollama error: ${err}`);
+  }
+  const data = await res.json();
+  return data.response ?? "";
+}
+
+async function callProvider(
+  provider: string,
+  secret: string,
+  model: string,
+  prompt: string,
+  temperature?: number,
+  maxTokens?: number
+) {
+  const start = Date.now();
+  let response = "";
+
+  if (provider === "openai") {
+    response = await callOpenAI(secret, model, prompt, temperature, maxTokens);
+  } else if (provider === "anthropic") {
+    response = await callAnthropic(secret, model, prompt, temperature, maxTokens);
+  } else if (provider === "ollama") {
+    response = await callOllama(model, prompt, temperature);
+  } else {
+    throw new Error(`Unsupported provider: ${provider}`);
+  }
+
+  return {
+    provider,
+    model,
+    response,
+    latency: Date.now() - start,
+  };
+}
+
 export const runTest = mutation({
   args: {
     promptId: v.id("prompts"),
-    configs: v.array(
-      v.object({
-        provider: v.union(v.literal("openai"), v.literal("anthropic"), v.literal("ollama")),
-        model: v.string(),
-        temperature: v.optional(v.number()),
-        topP: v.optional(v.number()),
-        maxTokens: v.optional(v.number()),
-      })
-    ),
+    keyId: v.id("apiKeys"),
+    model: v.string(),
+    temperature: v.optional(v.number()),
+    maxTokens: v.optional(v.number()),
+    testValues: v.optional(v.record(v.string(), v.string())),
   },
   handler: async (ctx, args) => {
     const user = await getUser(ctx);
@@ -83,35 +138,45 @@ export const runTest = mutation({
     const prompt = await ctx.db.get(args.promptId);
     if (!prompt) throw new Error("Prompt not found");
 
+    const key = await ctx.db.get(args.keyId);
+    if (!key) throw new Error("API key not found");
+
     const access = await getWorkspaceAccess(ctx, prompt.workspaceId, user._id.toString());
     if (!access || access === "viewer") {
       throw new Error("Access denied");
     }
 
-    const results: TestResult[] = [];
-    for (const config of args.configs) {
-      try {
-        const result = await callProvider(config.provider, config.model, prompt.content);
-        results.push(result);
-      } catch (e) {
-        results.push({
-          provider: config.provider,
-          model: config.model,
-          response: "",
-          latency: 0,
-          error: e instanceof Error ? e.message : "Unknown error",
-        });
-      }
+    const content = substituteVars(prompt.content, args.testValues ?? {});
+    const secret = decodeKey(key.encryptedKey);
+
+    let result;
+    try {
+      result = await callProvider(
+        key.provider,
+        secret,
+        args.model,
+        content,
+        args.temperature,
+        args.maxTokens
+      );
+    } catch (e) {
+      result = {
+        provider: key.provider,
+        model: args.model,
+        response: "",
+        latency: 0,
+        error: e instanceof Error ? e.message : "Unknown error",
+      };
     }
 
     const runId = await ctx.db.insert("testRuns", {
       promptId: args.promptId,
-      configs: args.configs,
-      results,
+      configs: [{ provider: key.provider, model: args.model, temperature: args.temperature, maxTokens: args.maxTokens }],
+      results: [result],
       createdAt: Date.now(),
     });
 
-    return runId;
+    return { runId, result };
   },
 });
 

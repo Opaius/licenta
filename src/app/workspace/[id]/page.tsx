@@ -12,13 +12,27 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from "@/components/ui/resizable";
-import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   UsersIcon,
   MessageSquareIcon,
   GitBranchIcon,
   SparklesIcon,
+  LogOut,
+  User,
+  Settings,
+  ChevronRightIcon,
+  HomeIcon,
 } from "lucide-react";
+import { authClient } from "@/lib/auth-client";
+import { useRouter } from "next/navigation";
 
 import { WorkspaceSidebar, type WorkspaceItem } from "@/components/editor/workspace-sidebar";
 import { PromptEditor } from "@/components/editor/prompt-editor";
@@ -65,18 +79,15 @@ const DEMO_TEST_RESULTS: TestResult[] = [
   { id: "t3", name: "Temperature Test", status: "pending" },
 ];
 
-const TEST_CONFIGS = [
-  { provider: "openai" as const, model: "gpt-4" },
-  { provider: "anthropic" as const, model: "claude-3-opus" },
-];
-
 export default function WorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const workspaceId = id as Id<"workspaces">;
+  const router = useRouter();
 
   const workspace = useQuery(api.workspaces.getWorkspace, { workspaceId });
   const allWorkspaces = useQuery(api.workspaces.listWorkspaces, {});
   const prompts = useQuery(api.prompts.listPrompts, { workspaceId });
+  const currentUser = useQuery(api.auth.getCurrentUser);
 
   const [selectedPromptId, setSelectedPromptId] = useState<Id<"prompts"> | null>(null);
 
@@ -99,7 +110,7 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
   const [maxTokens, setMaxTokens] = useState(2048);
   const [selectedModel, setSelectedModel] = useState("");
 
-const updatePrompt = useMutation(api.prompts.updatePrompt);
+  const updatePrompt = useMutation(api.prompts.updatePrompt);
   const updatePromptTitle = useMutation(api.prompts.updatePromptTitle);
   const updateWorkspaceName = useMutation(api.workspaces.updateWorkspace);
   const createPrompt = useMutation(api.prompts.createPrompt);
@@ -156,7 +167,24 @@ const updatePrompt = useMutation(api.prompts.updatePrompt);
   }, [saved]);
 
   const handleSave = async () => { if (!selectedPromptId) return; await updatePrompt({ promptId: selectedPromptId, content }); setSaved(true); };
-  const handleTest = async () => { if (!selectedPromptId) return; setTesting(true); try { await runTestMutation({ promptId: selectedPromptId, configs: TEST_CONFIGS }); } catch (e) { console.error(e); } finally { setTesting(false); } };
+  const handleTest = async () => {
+    if (!selectedPromptId || !selectedKeyId || !selectedModel) return;
+    setTesting(true);
+    try {
+      await runTestMutation({
+        promptId: selectedPromptId,
+        keyId: selectedKeyId as Id<"apiKeys">,
+        model: selectedModel,
+        temperature,
+        maxTokens,
+        testValues,
+      });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setTesting(false);
+    }
+  };
   const handleExport = () => { if (!content) return; const blob = new Blob([content], { type: "text/plain" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "prompt.txt"; a.click(); URL.revokeObjectURL(url); };
   const handleUpvote = () => { if (!selectedPromptId) return; voteMutation({ promptId: selectedPromptId, value: 1 }); };
   const handleDownvote = () => { if (!selectedPromptId) return; voteMutation({ promptId: selectedPromptId, value: -1 }); };
@@ -175,9 +203,65 @@ const updatePrompt = useMutation(api.prompts.updatePrompt);
 
   const isMainLoading = Boolean(selectedPromptId && !promptDetail);
 
+  const displayName = (currentUser as any)?.name || (currentUser as any)?.email?.split("@")[0] || "User";
+  const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
+
   return (
-    <div className="flex h-screen w-full bg-background overflow-hidden">
-      <ResizablePanelGroup direction="horizontal" className="h-full w-full">
+    <div className="flex flex-col h-screen w-full bg-background overflow-hidden">
+      {/* Workspace Header */}
+      <header className="flex h-12 items-center justify-between border-b border-border bg-background px-4 shrink-0">
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          <button onClick={() => router.push("/dashboard")} className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors shrink-0">
+            <HomeIcon className="size-3.5" />
+            <span className="hidden sm:inline">Dashboard</span>
+          </button>
+          <ChevronRightIcon className="size-3 text-muted-foreground shrink-0" />
+          <span className="font-medium truncate">{workspace?.name ?? "Workspace"}</span>
+          {promptDetail && (
+            <>
+              <ChevronRightIcon className="size-3 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground truncate">{promptDetail.title}</span>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex items-center gap-2 h-8 px-2 rounded-md hover:bg-muted transition-colors">
+              <div className="size-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium">
+                {initials}
+              </div>
+              <span className="hidden sm:inline text-xs">{displayName}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-48" align="end">
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none">{displayName}</p>
+                  <p className="text-xs leading-none text-muted-foreground">{(currentUser as any)?.email ?? ""}</p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/debug-settings")}>
+                <Settings className="mr-2 size-4" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={async () => {
+                  await authClient.signOut();
+                  router.push("/auth");
+                }}
+              >
+                <LogOut className="mr-2 size-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      <ResizablePanelGroup direction="horizontal" className="flex-1 w-full">
         {/* Sidebar */}
         <ResizablePanel defaultSize={16} minSize={10} maxSize={30}>
           <BoneSkeleton
@@ -209,6 +293,7 @@ const updatePrompt = useMutation(api.prompts.updatePrompt);
         {/* Parameters */}
         <ResizablePanel defaultSize={18} minSize={12} maxSize={35}>
           <ParametersPanel
+            workspaceId={workspaceId}
             content={content}
             testValues={testValues}
             onTestValuesChange={setTestValues}
@@ -217,6 +302,8 @@ const updatePrompt = useMutation(api.prompts.updatePrompt);
             selectedKeyId={selectedKeyId}
             onKeyChange={setSelectedKeyId}
             models={models ?? []}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
             onTemperatureChange={setTemperature}
             onMaxTokensChange={setMaxTokens}
             temperature={temperature}
