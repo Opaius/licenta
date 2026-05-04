@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { getUser } from "./auth";
+import { getUser, resolveAuthorNames } from "./auth";
 
 export const getMembership = query({
   args: { workspaceId: v.id("workspaces"), userId: v.string() },
@@ -20,25 +20,31 @@ export const listMembers = query({
     if (!user || !user._id) throw new Error("Not authenticated");
     const userId = user._id.toString();
     const workspace = await ctx.db.get(args.workspaceId);
-    
+
     if (!workspace) throw new Error("Workspace not found");
-    
+
     if (workspace.ownerId !== userId && !workspace.isPublic) {
       const membership = await ctx.db
         .query("workspaceMembers")
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .filter((q) => q.eq(q.field("workspaceId"), args.workspaceId))
         .first();
-      
+
       if (!membership) throw new Error("Access denied");
     }
-    
+
     const members = await ctx.db
       .query("workspaceMembers")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
       .collect();
-    
-    return members;
+
+    const userIds = members.map(m => m.userId);
+    const nameMap = await resolveAuthorNames(ctx, userIds);
+
+    return members.map(m => ({
+      ...m,
+      name: nameMap.get(m.userId),
+    }));
   },
 });
 

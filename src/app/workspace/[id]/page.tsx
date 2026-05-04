@@ -24,9 +24,7 @@ import {
   UsersIcon,
   MessageSquareIcon,
   GitBranchIcon,
-  SparklesIcon,
   LogOut,
-  User,
   Settings,
   ChevronRightIcon,
   HomeIcon,
@@ -38,47 +36,11 @@ import { toast } from "sonner";
 import { WorkspaceSidebar, type WorkspaceItem } from "@/components/editor/workspace-sidebar";
 import { PromptEditor } from "@/components/editor/prompt-editor";
 import { ParametersPanel } from "@/components/editor/parameters-panel";
-import { VersionHistoryPanel, type Version } from "@/components/editor/version-history-panel";
-import { CommentsPanel, type Comment } from "@/components/editor/comments-panel";
-import { VotingControls } from "@/components/editor/voting-controls";
+import { VersionHistoryPanel } from "@/components/editor/version-history-panel";
+import { ChatPanel } from "@/components/editor/chat-panel";
 import { Toolbar } from "@/components/editor/editor-toolbar";
 import { TestResultsPanel, type TestResult } from "@/components/editor/test-results-panel";
-
-const DEMO_WORKSPACES: WorkspaceItem[] = [
-  {
-    id: "demo-workspace",
-    name: "My Prompts",
-    prompts: [
-      { id: "prompt-1", name: "Customer Support Agent", updatedAt: new Date(Date.now() - 3600000), author: { name: "Alice" }, sharedWith: 2 },
-      { id: "prompt-2", name: "Code Reviewer", updatedAt: new Date(Date.now() - 7200000), author: { name: "Bob" } },
-      { id: "prompt-3", name: "Summarizer", updatedAt: new Date(Date.now() - 86400000), author: { name: "Alice" }, sharedWith: 1 },
-    ],
-  },
-  {
-    id: "shared-workspace",
-    name: "Team Prompts",
-    prompts: [
-      { id: "prompt-4", name: "Q&A Generator", updatedAt: new Date(Date.now() - 172800000), author: { name: "Team" }, sharedWith: 5 },
-    ],
-  },
-];
-
-const DEMO_VERSIONS: Version[] = [
-  { id: "v3", timestamp: new Date(Date.now() - 3600000), author: { name: "Alice" }, message: "Updated system prompt for better context", changes: 12 },
-  { id: "v2", timestamp: new Date(Date.now() - 7200000), author: { name: "Bob" }, message: "Added temperature parameter", changes: 5 },
-  { id: "v1", timestamp: new Date(Date.now() - 86400000), author: { name: "Alice" }, message: "Initial version", changes: 48 },
-];
-
-const DEMO_COMMENTS: Comment[] = [
-  { id: "c1", author: { name: "Bob" }, content: "Consider lowering temperature for more deterministic responses", timestamp: new Date(Date.now() - 1800000), line: 5, resolved: false },
-  { id: "c2", author: { name: "Charlie" }, content: "This prompt works well for code reviews!", timestamp: new Date(Date.now() - 7200000), line: 12, resolved: false, replies: [{ id: "c2-r1", author: { name: "Alice" }, content: "Thanks!", timestamp: new Date(Date.now() - 3600000) }] },
-];
-
-const DEMO_TEST_RESULTS: TestResult[] = [
-  { id: "t1", name: "Basic Prompt Test", status: "passed", duration: 234, output: "Prompt executed successfully with 3 variables resolved" },
-  { id: "t2", name: "Context Window Test", status: "failed", duration: 156, error: "Input exceeds model context window (8192 tokens)" },
-  { id: "t3", name: "Temperature Test", status: "pending" },
-];
+import type { ModelSetting } from "@/components/editor/parameters-panel";
 
 export default function WorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -98,10 +60,11 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
 
   const promptDetail = useQuery(api.prompts.getPrompt, selectedPromptId ? { promptId: selectedPromptId } : "skip");
   const versions = useQuery(api.prompts.getPromptVersions, selectedPromptId ? { promptId: selectedPromptId } : "skip");
-  const comments = useQuery(api.comments.getComments, selectedPromptId ? { promptId: selectedPromptId } : "skip");
-  const votes = useQuery(api.voting.getVotes, selectedPromptId ? { promptId: selectedPromptId } : "skip");
-  const userVoteData = useQuery(api.voting.getUserVote, selectedPromptId ? { promptId: selectedPromptId } : "skip");
+  const chatMessages = useQuery(api.comments.getChat, selectedPromptId ? { promptId: selectedPromptId } : "skip");
+  const userVotesData = useQuery(api.voting.getUserVotesForPrompt, selectedPromptId ? { promptId: selectedPromptId } : "skip");
   const testRuns = useQuery(api.testRuns.listTestRuns, selectedPromptId ? { promptId: selectedPromptId } : "skip");
+  const members = useQuery(api.workspaceMembers.listMembers, { workspaceId });
+  const activityFeed = useQuery(api.prompts.getActivityFeed, { workspaceId, limit: 10 });
 
   const apiKeys = useQuery(api.apiKeys.listApiKeys, { workspaceId });
   const [selectedKeyId, setSelectedKeyId] = useState<string | undefined>();
@@ -115,10 +78,9 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
   const updatePromptTitle = useMutation(api.prompts.updatePromptTitle);
   const updateWorkspaceName = useMutation(api.workspaces.updateWorkspace);
   const createPrompt = useMutation(api.prompts.createPrompt);
-  const voteMutation = useMutation(api.voting.votePrompt);
-  const addCommentMutation = useMutation(api.comments.addComment);
-  const resolveCommentMutation = useMutation(api.comments.resolveComment);
-  const replyCommentMutation = useMutation(api.comments.replyComment);
+  const forkPrompt = useMutation(api.prompts.forkPrompt);
+  const voteMutation = useMutation(api.voting.voteVersion);
+  const addChatMessageMutation = useMutation(api.comments.addChatMessage);
   const restoreVersionMutation = useMutation(api.prompts.restoreVersion);
   const runTestMutation = useMutation(api.testRuns.runTest);
 
@@ -128,14 +90,11 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [activeTab, setActiveTab] = useState("versions");
-  const [upvotes, setUpvotes] = useState(0);
-  const [downvotes, setDownvotes] = useState(0);
-  const [userVote, setUserVote] = useState<"up" | "down" | null>(null);
   const [testValues, setTestValues] = useState<Record<string, string>>({});
+  const [modelSettings, setModelSettings] = useState<ModelSetting[]>([]);
 
   useEffect(() => { if (promptDetail) { setContent(promptDetail.content); setSaved(true); } }, [promptDetail]);
-  useEffect(() => { if (votes) { setUpvotes(votes.filter(v => v.value === 1).length); setDownvotes(votes.filter(v => v.value === -1).length); } }, [votes]);
-  useEffect(() => { setUserVote(userVoteData ? (userVoteData.value === 1 ? "up" : "down") : null); }, [userVoteData]);
+
   useEffect(() => {
     if (testRuns?.length) {
       const latest = testRuns[0];
@@ -143,6 +102,8 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
         id: `${latest._id}-${idx}`, name: `${r.provider}/${r.model}`, status: r.error ? "failed" : "passed",
         duration: r.latency, error: r.error, output: r.response,
       })));
+    } else {
+      setTestResults([]);
     }
   }, [testRuns]);
 
@@ -171,12 +132,11 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
   const handleTest = async () => {
     if (!selectedPromptId || !selectedKeyId || !selectedModel) return;
     setTesting(true);
-    const runId = `pending-${Date.now()}`;
-    setTestResults((prev) => [
-      { id: runId, name: `${selectedKeyId ? apiKeys?.find(k => k._id === selectedKeyId)?.provider : "test"}/${selectedModel}`, status: "running" },
-      ...prev,
-    ]);
     try {
+      const extraSettings: Record<string, string> = {};
+      for (const s of modelSettings) {
+        extraSettings[s.key] = String(s.value);
+      }
       await runTestMutation({
         promptId: selectedPromptId,
         keyId: selectedKeyId as Id<"apiKeys">,
@@ -184,28 +144,30 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
         temperature,
         maxTokens,
         testValues,
+        extraSettings,
       });
     } catch (e) {
       console.error(e);
-      setTestResults((prev) =>
-        prev.map((r) =>
-          r.id === runId
-            ? { ...r, status: "failed" as const, error: e instanceof Error ? e.message : "Test failed" }
-            : r
-        )
-      );
+      toast.error(e instanceof Error ? e.message : "Test failed");
     } finally {
       setTesting(false);
     }
   };
   const handleExport = () => { if (!content) return; const blob = new Blob([content], { type: "text/plain" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "prompt.txt"; a.click(); URL.revokeObjectURL(url); };
-  const handleUpvote = () => { if (!selectedPromptId) return; voteMutation({ promptId: selectedPromptId, value: 1 }); };
-  const handleDownvote = () => { if (!selectedPromptId) return; voteMutation({ promptId: selectedPromptId, value: -1 }); };
-  const handleAddComment = (contentStr: string, line?: number) => { if (!selectedPromptId) return; addCommentMutation({ promptId: selectedPromptId, content: contentStr, selectionStart: line, selectionEnd: line }); };
-  const handleResolveComment = (commentId: string) => { resolveCommentMutation({ commentId: commentId as Id<"comments"> }); };
-  const handleReplyComment = (commentId: string, contentStr: string) => { replyCommentMutation({ parentId: commentId as Id<"comments">, content: contentStr }); };
+  const handleVoteVersion = async (versionId: string, value: 1 | -1) => {
+    try {
+      await voteMutation({ versionId: versionId as Id<"promptVersions">, value });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Vote failed");
+    }
+  };
+  const handleSendChatMessage = (content: string) => {
+    if (!selectedPromptId) return;
+    addChatMessageMutation({ promptId: selectedPromptId, content });
+  };
   const handleRestoreVersion = (versionId: string) => { if (!selectedPromptId) return; restoreVersionMutation({ promptId: selectedPromptId, versionId: versionId as Id<"promptVersions"> }); };
   const handleCreatePrompt = async (wsId: string) => { const result = await createPrompt({ workspaceId: wsId as Id<"workspaces">, title: "New Prompt", content: "" }); if (result?.promptId) setSelectedPromptId(result.promptId); };
+  const handleForkPrompt = async (promptId: string) => { const result = await forkPrompt({ promptId: promptId as Id<"prompts">, targetWorkspaceId: workspaceId }); if (result?.promptId) { setSelectedPromptId(result.promptId); toast.success(`Forked as "${result.title}"`); } };
   const handleRenamePrompt = async (promptId: string, newName: string) => { await updatePromptTitle({ promptId: promptId as Id<"prompts">, title: newName }); };
   const handleRenameWorkspace = async (wsId: string, newName: string) => { await updateWorkspaceName({ workspaceId: wsId as Id<"workspaces">, name: newName }); };
 
@@ -218,6 +180,13 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
 
   const displayName = (currentUser as any)?.name || (currentUser as any)?.email?.split("@")[0] || "User";
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
+
+  const userVoteMap = new Map<string, 1 | -1>();
+  for (const v of (userVotesData ?? [])) {
+    if (v.versionId) {
+      userVoteMap.set(v.versionId, v.value);
+    }
+  }
 
   return (
     <div className="flex flex-col h-screen w-full bg-background overflow-hidden">
@@ -280,7 +249,6 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
           <BoneSkeleton
             name="sidebar"
             loading={allWorkspaces === undefined}
-            fixture={<WorkspaceSidebar workspaces={DEMO_WORKSPACES} activeWorkspaceId="demo-workspace" activePromptId="prompt-1" onSelectPrompt={() => {}} onCreatePrompt={() => {}} />}
             fallback={
               <div className="p-2 space-y-2">
                 <div className="h-8 w-3/4 bg-muted rounded animate-pulse" />
@@ -293,10 +261,12 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
               workspaces={sidebarWorkspaces}
               activeWorkspaceId={workspaceId}
               activePromptId={selectedPromptId ?? undefined}
+              members={(members ?? []).map(m => ({ userId: m.userId, role: m.role, joinedAt: m.joinedAt, name: m.name }))}
               onSelectPrompt={(_, promptId) => setSelectedPromptId(promptId as Id<"prompts">)}
               onCreatePrompt={handleCreatePrompt}
               onRenamePrompt={handleRenamePrompt}
               onRenameWorkspace={handleRenameWorkspace}
+              onForkPrompt={handleForkPrompt}
             />
           </BoneSkeleton>
         </ResizablePanel>
@@ -310,7 +280,6 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
             content={content}
             testValues={testValues}
             onTestValuesChange={setTestValues}
-            onRunTest={handleTest}
             apiKeys={apiKeys}
             selectedKeyId={selectedKeyId}
             onKeyChange={setSelectedKeyId}
@@ -321,6 +290,8 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
             onMaxTokensChange={setMaxTokens}
             temperature={temperature}
             maxTokens={maxTokens}
+            modelSettings={modelSettings}
+            onModelSettingsChange={setModelSettings}
           />
         </ResizablePanel>
 
@@ -342,7 +313,7 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
                     onCursorChange={(line, column) => setCursorPosition({ line, column })}
                   />
                 </div>
-                <TestResultsPanel results={testResults} onRunTest={handleTest} isRunning={testing} />
+                <TestResultsPanel results={testResults} isRunning={testing} />
                 <div className="flex items-center justify-between px-3 py-1.5 border-t text-xs text-muted-foreground bg-muted/30 shrink-0 min-w-0">
                   <div className="flex items-center gap-3 truncate">
                     <span>Ln {cursorPosition.line}, Col {cursorPosition.column}</span>
@@ -371,29 +342,34 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)}>
               <TabsList className="w-full rounded-none border-b">
                 <TabsTrigger value="versions" className="flex-1 gap-1"><GitBranchIcon className="size-3" />Versions</TabsTrigger>
-                <TabsTrigger value="comments" className="flex-1 gap-1"><MessageSquareIcon className="size-3" />Comments</TabsTrigger>
-                <TabsTrigger value="voting" className="flex-1 gap-1"><SparklesIcon className="size-3" />Vote</TabsTrigger>
+                <TabsTrigger value="chat" className="flex-1 gap-1"><MessageSquareIcon className="size-3" />Chat</TabsTrigger>
               </TabsList>
 
               <TabsContent value="versions" className="flex-1 m-0 p-0">
                 <VersionHistoryPanel
-                  versions={(versions ?? []).map((v) => ({ id: v._id, timestamp: new Date(v.createdAt), author: { name: v.authorName || "Unknown" }, message: v.version === 1 ? "Initial version" : `Version ${v.version}`, changes: v.changes ?? 0 }))}
+                  versions={(versions ?? []).map((v) => ({
+                    id: v._id,
+                    timestamp: new Date(v.createdAt),
+                    author: { name: v.authorName || "Unknown" },
+                    message: v.version === 1 ? "Initial version" : `Version ${v.version}`,
+                    changes: v.changes ?? 0,
+                    hasTestRuns: (v as any).hasTestRuns ?? false,
+                    voteScore: (v as any).voteScore ?? 0,
+                    userVote: userVoteMap.get(v._id) ?? null,
+                  }))}
                   currentVersionId={promptDetail?.currentVersion?.toString()}
+                  workspaceId={workspaceId}
+                  promptId={selectedPromptId ?? ""}
                   onRestore={handleRestoreVersion}
+                  onVote={handleVoteVersion}
                 />
               </TabsContent>
 
-              <TabsContent value="comments" className="flex-1 m-0 p-0">
-                <CommentsPanel
-                  comments={(comments ?? []).map((c) => ({ id: c._id, author: { name: c.authorName || "Unknown" }, content: c.content, timestamp: new Date(c.createdAt), line: c.selectionStart, resolved: c.resolved }))}
-                  onAddComment={handleAddComment}
-                  onResolve={handleResolveComment}
-                  onReply={handleReplyComment}
+              <TabsContent value="chat" className="flex-1 m-0 p-0">
+                <ChatPanel
+                  messages={(chatMessages ?? []).map((m) => ({ id: m._id, author: { name: m.authorName || "Unknown" }, content: m.content, timestamp: new Date(m.createdAt) }))}
+                  onSendMessage={handleSendChatMessage}
                 />
-              </TabsContent>
-
-              <TabsContent value="voting" className="flex-1 m-0 p-0">
-                <VotingControls upvotes={upvotes} downvotes={downvotes} userVote={userVote} onUpvote={handleUpvote} onDownvote={handleDownvote} />
               </TabsContent>
             </Tabs>
           </div>

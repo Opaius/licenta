@@ -73,8 +73,6 @@ const registerPromptLanguage = (monaco: typeof import("monaco-editor")) => {
         { label: "{{query}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{query}}", range },
         { label: "{{user_message}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{user_message}}", range },
         { label: "{{system_prompt}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{system_prompt}}", range },
-        { label: "{{temperature|0.7}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{temperature|0.7}}", range },
-        { label: "{{max_tokens|2000}}", kind: monaco.languages.CompletionItemKind.Variable, insertText: "{{max_tokens|2000}}", range },
       ].map((item) => ({ ...item, detail: "Template variable" }));
 
       return { suggestions };

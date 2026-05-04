@@ -46,6 +46,7 @@ export const listApiKeys = query({
       _id: k._id,
       provider: k.provider,
       label: k.label,
+      baseUrl: k.baseUrl,
       maskedKey: `${decodeKey(k.encryptedKey).slice(0, 4)}...${decodeKey(k.encryptedKey).slice(-4)}`,
       createdAt: k.createdAt,
     }));
@@ -55,9 +56,10 @@ export const listApiKeys = query({
 export const addApiKey = mutation({
   args: {
     workspaceId: v.id("workspaces"),
-    provider: v.union(v.literal("openai"), v.literal("anthropic"), v.literal("ollama")),
+    provider: v.union(v.literal("openai"), v.literal("anthropic"), v.literal("ollama"), v.literal("litellm")),
     secret: v.string(),
     label: v.string(),
+    baseUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await getUser(ctx);
@@ -73,6 +75,7 @@ export const addApiKey = mutation({
       provider: args.provider,
       encryptedKey: encodeKey(args.secret),
       label: args.label,
+      baseUrl: args.baseUrl,
       createdAt: Date.now(),
     });
 
@@ -111,6 +114,22 @@ export const listModels = query({
     if (!access || access === "viewer") throw new Error("Access denied");
 
     const secret = decodeKey(key.encryptedKey);
+
+    // LiteLLM proxy — unified /models endpoint for all providers
+    if (key.provider === "litellm") {
+      const url = key.baseUrl ? `${key.baseUrl.replace(/\/$/, "")}/models` : "http://localhost:4000/models";
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${secret}` },
+      });
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`LiteLLM models error: ${error}`);
+      }
+      const data = await response.json();
+      // litellm returns OpenAI-compatible format: { data: [{ id, object, created, owned_by }] }
+      const models = data.data ?? [];
+      return models.map((m: any) => ({ id: m.id, name: m.id }));
+    }
 
     if (key.provider === "openai") {
       const response = await fetch("https://api.openai.com/v1/models", {
@@ -169,6 +188,7 @@ export const getApiKey = query({
       _id: key._id,
       provider: key.provider,
       label: key.label,
+      baseUrl: key.baseUrl,
       secret: decodeKey(key.encryptedKey),
       createdAt: key.createdAt,
     };

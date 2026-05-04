@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   FolderIcon,
   FileIcon,
@@ -15,6 +17,7 @@ import {
   PencilIcon,
   CheckIcon,
   XIcon,
+  GitForkIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -37,26 +40,38 @@ export interface WorkspaceItem {
   prompts: PromptItem[];
 }
 
+export interface WorkspaceMember {
+  userId: string;
+  role: "owner" | "editor" | "viewer";
+  joinedAt: number;
+  name?: string;
+  email?: string;
+}
+
 interface WorkspaceSidebarProps {
   workspaces: WorkspaceItem[];
   activeWorkspaceId?: string;
   activePromptId?: string;
+  members?: WorkspaceMember[];
   onSelectPrompt?: (workspaceId: string, promptId: string) => void;
   onCreatePrompt?: (workspaceId: string) => void;
   onCreateWorkspace?: () => void;
   onRenamePrompt?: (promptId: string, newName: string) => void;
   onRenameWorkspace?: (workspaceId: string, newName: string) => void;
+  onForkPrompt?: (promptId: string) => void;
 }
 
 export function WorkspaceSidebar({
   workspaces,
   activeWorkspaceId,
   activePromptId,
+  members = [],
   onSelectPrompt,
   onCreatePrompt,
   onCreateWorkspace,
   onRenamePrompt,
   onRenameWorkspace,
+  onForkPrompt,
 }: WorkspaceSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Set<string>>(
@@ -128,9 +143,15 @@ export function WorkspaceSidebar({
     setEditValue("");
   };
 
+  const [now, setNow] = useState<number>(0);
+
+  useEffect(() => {
+    setNow(Date.now());
+  }, []);
+
   const formatDate = (date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
+    if (!now) return date.toLocaleDateString();
+    const diff = now - date.getTime();
     const days = Math.floor(diff / 86400000);
 
     if (days === 0) return "today";
@@ -159,7 +180,6 @@ export function WorkspaceSidebar({
           {workspaces.map((workspace) => (
             <div key={workspace.id} className="mb-2">
               <div
-                role="button"
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-muted cursor-pointer group"
                 onClick={() => toggleWorkspace(workspace.id)}
               >
@@ -222,7 +242,6 @@ export function WorkspaceSidebar({
                       )}
                     >
                       <div
-                        role="button"
                         className="flex flex-1 items-center gap-2 h-8 pl-2 rounded-md cursor-pointer hover:bg-muted/50 min-w-0"
                         onClick={() => onSelectPrompt?.(workspace.id, prompt.id)}
                       >
@@ -245,6 +264,17 @@ export function WorkspaceSidebar({
                         )}
                       </div>
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          title="Fork prompt"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onForkPrompt?.(prompt.id);
+                          }}
+                        >
+                          <GitForkIcon className="size-3" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon-xs"
@@ -272,6 +302,39 @@ export function WorkspaceSidebar({
           ))}
         </div>
       </ScrollArea>
+
+      {members.length > 0 && (
+        <div className="border-t p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <UsersIcon className="size-4 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground uppercase">Members</span>
+            <Badge variant="secondary" className="text-xs px-1.5 py-0.5 ml-auto">
+              {members.length}
+            </Badge>
+          </div>
+          <div className="space-y-1.5 max-h-32 overflow-y-auto">
+            {members.slice(0, 5).map((member) => (
+              <div key={member.userId} className="flex items-center gap-2">
+                <div className="relative">
+                  <Avatar className="size-6">
+                    <AvatarFallback className="text-xs">
+                      {member.name?.slice(0, 2).toUpperCase() || member.userId.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-green-500 border-2 bg-background" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs truncate">{member.name || member.email?.split("@")[0] || "User"}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{member.role}</p>
+                </div>
+              </div>
+            ))}
+            {members.length > 5 && (
+              <p className="text-xs text-muted-foreground pl-8">+{members.length - 5} more</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="p-2 border-t">
         <Button

@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   ChevronDownIcon,
   ChevronUpIcon,
-  PlayIcon,
   TerminalIcon,
   CheckCircleIcon,
   XCircleIcon,
@@ -28,13 +27,11 @@ export interface TestResult {
 
 interface TestResultsPanelProps {
   results: TestResult[];
-  onRunTest?: () => void;
   isRunning?: boolean;
 }
 
 export function TestResultsPanel({
   results,
-  onRunTest,
   isRunning = false,
 }: TestResultsPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -86,15 +83,12 @@ export function TestResultsPanel({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="default"
-            size="sm"
-            onClick={onRunTest}
-            disabled={isRunning}
-          >
-            <PlayIcon className="size-4 mr-1" />
-            {isRunning ? "Running..." : "Run Tests"}
-          </Button>
+          {isRunning && (
+            <Badge variant="outline" className="text-xs animate-pulse">
+              <ClockIcon className="size-3 mr-1" />
+              Running...
+            </Badge>
+          )}
         </div>
       </div>
 

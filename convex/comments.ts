@@ -27,6 +27,26 @@ export const getComments = query({
   },
 });
 
+export const getChat = query({
+  args: { promptId: v.id("prompts") },
+  handler: async (ctx, { promptId }) => {
+    const comments = await ctx.db
+      .query("comments")
+      .withIndex("by_prompt", (q) => q.eq("promptId", promptId))
+      .collect();
+
+    const chatMessages = comments.filter((c) => !c.versionId && !c.parentId);
+
+    const authorIds = chatMessages.map((c) => c.authorId);
+    const nameMap = await resolveAuthorNames(ctx, authorIds);
+
+    return chatMessages.map((c) => ({
+      ...c,
+      authorName: c.authorName ?? nameMap.get(c.authorId) ?? "Unknown",
+    }));
+  },
+});
+
 export const addComment = mutation({
   args: {
     promptId: v.id("prompts"),
@@ -52,6 +72,31 @@ export const addComment = mutation({
       createdAt: Date.now(),
     });
     return commentId;
+  },
+});
+
+export const addChatMessage = mutation({
+  args: {
+    promptId: v.id("prompts"),
+    content: v.string(),
+  },
+  handler: async (ctx, { promptId, content }) => {
+    const user = await getUser(ctx);
+    if (!user) throw new Error("Must be logged in to chat");
+
+    const messageId = await ctx.db.insert("comments", {
+      promptId,
+      versionId: undefined,
+      content,
+      selectionStart: undefined,
+      selectionEnd: undefined,
+      authorId: user._id,
+      authorName: user.name ?? user._id.slice(0, 8),
+      resolved: false,
+      parentId: undefined,
+      createdAt: Date.now(),
+    });
+    return messageId;
   },
 });
 

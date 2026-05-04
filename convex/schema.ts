@@ -61,13 +61,13 @@ export default defineSchema({
   }).index("by_prompt", ["promptId"]),
 
   votes: defineTable({
-    promptId: v.id("prompts"),
+    versionId: v.optional(v.id("promptVersions")),
     userId: v.string(),
     value: v.union(v.literal(1), v.literal(-1)),
     createdAt: v.number(),
   })
-    .index("by_prompt", ["promptId"])
-    .index("by_user_prompt", ["userId", "promptId"]),
+    .index("by_version", ["versionId"])
+    .index("by_user_version", ["userId", "versionId"]),
 
   comments: defineTable({
     promptId: v.id("prompts"),
@@ -86,15 +86,17 @@ export default defineSchema({
 
   apiKeys: defineTable({
     workspaceId: v.id("workspaces"),
-    provider: v.union(v.literal("openai"), v.literal("anthropic"), v.literal("ollama")),
+    provider: v.union(v.literal("openai"), v.literal("anthropic"), v.literal("ollama"), v.literal("litellm")),
     // Encrypted key - in production use proper encryption
     encryptedKey: v.string(),
     label: v.string(),
+    baseUrl: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_workspace", ["workspaceId"]),
 
   testRuns: defineTable({
     promptId: v.id("prompts"),
+    versionId: v.optional(v.id("promptVersions")),
     configs: v.array(
       v.object({
         provider: v.string(),
@@ -116,7 +118,9 @@ export default defineSchema({
       )
     ),
     createdAt: v.number(),
-  }).index("by_prompt", ["promptId"]),
+  })
+    .index("by_prompt", ["promptId"])
+    .index("by_version", ["versionId"]),
 
   notifications: defineTable({
     userId: v.string(),

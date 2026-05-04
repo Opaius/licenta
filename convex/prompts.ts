@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { getUser, getUserName, resolveAuthorNames } from "./auth";
 
 function extractTemplateVars(content: string): string[] {
-  const regex = /\{\{(\w+)\}\}/g;
+  const regex = /\{\{(\w+)(?:\s*\|\s*[^}]+)?\}\}/g;
   const vars = new Set<string>();
   let match;
   while ((match = regex.exec(content)) !== null) {
@@ -236,6 +236,59 @@ export const getPrompt = query({
   },
 });
 
+export const getVersion = query({
+  args: { versionId: v.id("promptVersions") },
+  handler: async (ctx, args) => {
+    const userId = await getUserIdOrThrow(ctx);
+
+    const version = await ctx.db.get(args.versionId);
+    if (!version) throw new Error("Version not found");
+
+    const prompt = await ctx.db.get(version.promptId);
+    if (!prompt) throw new Error("Prompt not found");
+
+    const access = await getWorkspaceAccess(ctx, prompt.workspaceId, userId);
+    if (!access) throw new Error("Access denied");
+
+    const authorName = await resolveAuthorNames(ctx, [version.authorId]).then(
+      (map) => map.get(version.authorId) ?? "Unknown"
+    );
+
+    const testRun = await ctx.db
+      .query("testRuns")
+      .withIndex("by_version", (q: any) => q.eq("versionId", args.versionId))
+      .first();
+
+    const votes = await ctx.db
+      .query("votes")
+      .withIndex("by_version", (q: any) => q.eq("versionId", args.versionId))
+      .collect();
+
+    const voteScore = votes.reduce((sum, v) => sum + v.value, 0);
+
+    const userVote = await ctx.db
+      .query("votes")
+      .withIndex("by_user_version", (q: any) => q.eq("userId", userId).eq("versionId", args.versionId))
+      .first();
+
+    return {
+      _id: version._id,
+      promptId: prompt._id,
+      workspaceId: prompt.workspaceId,
+      promptTitle: prompt.title,
+      content: version.content,
+      version: version.version,
+      changes: version.changes,
+      createdAt: version.createdAt,
+      authorId: version.authorId,
+      authorName: version.authorName ?? authorName,
+      hasTestRuns: !!testRun,
+      voteScore,
+      userVote: userVote?.value ?? null,
+    };
+  },
+});
+
 export const getPromptVersions = query({
   args: { promptId: v.id("prompts") },
   handler: async (ctx, args) => {
@@ -256,6 +309,31 @@ export const getPromptVersions = query({
     const authorIds = versions.map((v) => v.authorId);
     const nameMap = await resolveAuthorNames(ctx, authorIds);
 
+    // Fetch test runs and votes for each version in parallel
+    const versionIds = versions.map((v) => v._id);
+    const testRuns = await ctx.db
+      .query("testRuns")
+      .collect()
+      .then((all) => all.filter((r) => r.versionId && versionIds.includes(r.versionId)));
+
+    const votes = await ctx.db
+      .query("votes")
+      .collect()
+      .then((all) => all.filter((vote) => vote.versionId && versionIds.includes(vote.versionId)));
+
+    const testRunMap = new Map<string, boolean>();
+    for (const v of versionIds) {
+      testRunMap.set(v, testRuns.some((r) => r.versionId === v));
+    }
+
+    const voteScoreMap = new Map<string, number>();
+    for (const v of versionIds) {
+      voteScoreMap.set(
+        v,
+        votes.filter((vote) => vote.versionId === v).reduce((sum, vote) => sum + vote.value, 0)
+      );
+    }
+
     return versions.map((v) => ({
       _id: v._id,
       _creationTime: v._creationTime,
@@ -266,6 +344,8 @@ export const getPromptVersions = query({
       createdAt: v.createdAt,
       authorId: v.authorId,
       authorName: v.authorName ?? nameMap.get(v.authorId) ?? "Unknown",
+      hasTestRuns: testRunMap.get(v._id) ?? false,
+      voteScore: voteScoreMap.get(v._id) ?? 0,
     }));
   },
 });
@@ -481,5 +561,93 @@ export const deletePrompt = mutation({
     await ctx.db.delete(args.promptId);
 
     return { success: true };
+  },
+});
+
+export const forkPrompt = mutation({
+  args: {
+    promptId: v.id("prompts"),
+    targetWorkspaceId: v.optional(v.id("workspaces")),
+    newTitle: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getUserIdOrThrow(ctx);
+    const prompt = await ctx.db.get(args.promptId);
+    if (!prompt) throw new Error("Prompt not found");
+
+    const targetWsId = args.targetWorkspaceId ?? prompt.workspaceId;
+    const access = await getWorkspaceAccess(ctx, targetWsId, userId);
+    if (!access || access === "viewer") {
+      throw new Error("Write access required");
+    }
+
+    const authorName = await getUserName(ctx);
+    const now = Date.now();
+    const forkTitle = args.newTitle ?? `${prompt.title} (fork)`;
+
+    const promptId = await ctx.db.insert("prompts", {
+      workspaceId: targetWsId,
+      title: forkTitle,
+      content: prompt.content,
+      templateVars: prompt.templateVars,
+      createdAt: now,
+      authorId: userId,
+      currentVersion: 1,
+    });
+
+    await ctx.db.insert("promptVersions", {
+      promptId,
+      content: prompt.content,
+      version: 1,
+      changes: 0,
+      createdAt: now,
+      authorId: userId,
+      authorName: `Forked from ${authorName}`,
+    });
+
+    return { promptId, title: forkTitle };
+  },
+});
+
+export const getActivityFeed = query({
+  args: { workspaceId: v.id("workspaces"), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const userId = await getUserIdOrThrow(ctx);
+    const access = await getWorkspaceAccess(ctx, args.workspaceId, userId);
+    if (!access) throw new Error("Access denied");
+
+    const maxResults = args.limit ?? 20;
+    const promptsInWs = await ctx.db
+      .query("prompts")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+
+    const promptIds = promptsInWs.map((p) => p._id);
+    if (promptIds.length === 0) return [];
+
+    const versions = await ctx.db
+      .query("promptVersions")
+      .collect()
+      .then((allVersions) =>
+        allVersions
+          .filter((v) => promptIds.includes(v.promptId))
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, maxResults)
+      );
+
+    const authorIds = versions.map((v) => v.authorId);
+    const nameMap = await resolveAuthorNames(ctx, authorIds);
+    const promptMap = new Map(promptsInWs.map((p) => [p._id, p.title]));
+
+    return versions.map((v) => ({
+      id: v._id,
+      promptId: v.promptId,
+      promptTitle: promptMap.get(v.promptId) ?? "Unknown",
+      version: v.version,
+      changes: v.changes,
+      createdAt: v.createdAt,
+      authorId: v.authorId,
+      authorName: v.authorName ?? nameMap.get(v.authorId) ?? "Unknown",
+    }));
   },
 });
